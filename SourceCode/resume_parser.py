@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 # PDF parsing
-import fitz  # PyMuPDF
+import pdfplumber
 
 # DOCX parsing
 from docx import Document
@@ -141,12 +141,13 @@ JOB_TITLE_PATTERNS = [
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
-    """Extract text from PDF using PyMuPDF."""
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    """Extract text from PDF using pdfplumber."""
     text_parts = []
-    for page in doc:
-        text_parts.append(page.get_text())
-    doc.close()
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
     return "\n".join(text_parts)
 
 
