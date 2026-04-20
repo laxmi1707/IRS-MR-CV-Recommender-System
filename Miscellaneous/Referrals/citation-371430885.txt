@@ -1,0 +1,1 @@
+Tallapragada, V V & Raj, V. & Deepak, U. & Sai, P. & Mallikarjuna, T.. (2023). Improved Resume Parsing based on Contextual Meaning Extraction using BERT. 1702-1708. 10.1109/ICICCS56967.2023.10142800. 
