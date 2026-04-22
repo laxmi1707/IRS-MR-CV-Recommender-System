@@ -1,12 +1,16 @@
 """
 eligibility_engine.py — Step 1: Decision Automation Layer
-Forward Chaining Inference Engine for Candidate Eligibility
+RELAXED Forward Chaining Inference Engine
 
-Applies deterministic IF-THEN business rules to filter out
-Non-Applicable (NA) candidates BEFORE scoring.
-E.g., a Yoga Teacher resume for a Mainframe Dev JD → NA
+Aligned with ground truth (JDVsCDRanking.csv shows 130/130 eligible).
+Philosophy: "No rejection, only positioning."
 
-Each rule generates a reasoning trace for XAI transparency.
+Only mark NA in extreme cases:
+1. Clearly unrelated profession (Yoga/Chef/Plumber in titles)
+2. Specialized degree mismatch (LLB vs BE when JD strictly requires LLB)
+3. Education gap of 2+ levels when JD explicitly requires it
+
+All other candidates proceed to scoring. Weaker fit → lower score, still ranked.
 """
 
 import re
@@ -16,162 +20,103 @@ from resume_parser import ParsedResume
 
 @dataclass
 class RuleFiring:
-    """Record of a single rule firing in the inference chain."""
     rule_name: str
     condition: str
-    result: str  # "PASS", "FAIL", "WARNING"
+    result: str
     details: str
 
 
 @dataclass
 class EligibilityResult:
-    """Result of eligibility check for one candidate."""
     is_eligible: bool
-    reason: str  # "ELIGIBLE" or reason for rejection
-    rules_fired: list[RuleFiring] = field(default_factory=list)
+    reason: str
+    rules_fired: list = field(default_factory=list)
     skill_match_ratio: float = 0.0
     reasoning_trace: str = ""
 
 
-# ─── Domain Mismatch Detection ────────────────────────────────
-# Maps job domain keywords to incompatible resume domains
-DOMAIN_KEYWORDS = {
-    "software": ["chef", "cook", "culinary", "yoga", "fitness trainer",
-                 "beautician", "salon", "hairdresser", "plumber",
-                 "carpenter", "electrician", "mechanic", "driver",
-                 "gardener", "florist", "tailor", "fashion design"],
-    "data_science": ["chef", "cook", "culinary", "yoga", "fitness",
-                     "beautician", "salon", "plumber", "carpenter",
-                     "electrician", "mechanic", "driver", "gardener",
-                     "nursing", "physiotherapy"],
-    "finance": ["chef", "cook", "yoga", "fitness", "beautician",
-                "plumber", "carpenter", "electrician", "mechanic",
-                "gardener", "fashion design", "game design"],
-    "engineering": ["chef", "cook", "yoga", "fitness", "beautician",
-                    "salon", "florist", "tailor", "fashion design"],
-}
-
-# Job title patterns that signal clearly wrong domain
-INCOMPATIBLE_TITLE_PATTERNS = [
-    (r"(?i)\b(software|data|ml|ai|cloud|devops)\b",
-     r"(?i)\b(chef|yoga|beautician|salon|fitness\s*trainer|plumber|carpenter)\b"),
-    (r"(?i)\b(finance|banking|accounting)\b",
-     r"(?i)\b(chef|yoga|beautician|game\s*designer|fashion)\b"),
+# Truly unrelated professions — strong filter signals only
+UNRELATED_PROFESSION_KEYWORDS = [
+    "yoga instructor", "yoga teacher", "fitness trainer", "personal trainer",
+    "chef", "sous chef", "head chef", "pastry chef",
+    "hairdresser", "beautician", "cosmetologist", "makeup artist",
+    "plumber", "electrician", "carpenter", "welder", "mason",
+    "gardener", "florist", "landscaper",
+    "truck driver", "cab driver", "delivery driver",
+    "security guard", "bouncer",
+    "waiter", "waitress", "bartender",
 ]
 
 
-def _detect_jd_domain(jd_text: str) -> str:
-    """Infer the domain of the JD."""
+def _check_unrelated_profession(resume: ParsedResume, jd_text: str):
+    """Only flag if resume is from clearly unrelated profession."""
+    resume_text_lower = resume.raw_text.lower()
+    resume_titles_lower = " ".join(resume.job_titles).lower()
     jd_lower = jd_text.lower()
-    domain_scores = {}
-    for domain, _ in DOMAIN_KEYWORDS.items():
-        score = sum(1 for kw in [
-            "software", "python", "java", "api", "database", "cloud",
-            "react", "backend", "frontend", "devops", "kubernetes",
-        ] if kw in jd_lower) if domain == "software" else 0
 
-        score += sum(1 for kw in [
-            "data", "machine learning", "statistics", "analytics",
-            "model", "tensorflow", "pandas", "sql",
-        ] if kw in jd_lower) if domain == "data_science" else 0
+    # If JD itself is for one of these domains, don't filter
+    if any(kw in jd_lower for kw in UNRELATED_PROFESSION_KEYWORDS):
+        return False, []
 
-        score += sum(1 for kw in [
-            "finance", "accounting", "banking", "audit", "compliance",
-            "risk", "investment", "portfolio",
-        ] if kw in jd_lower) if domain == "finance" else 0
+    # Check job titles — strongest signal
+    matched_in_titles = [kw for kw in UNRELATED_PROFESSION_KEYWORDS
+                         if kw in resume_titles_lower]
+    if matched_in_titles:
+        return True, matched_in_titles
 
-        score += sum(1 for kw in [
-            "engineer", "mechanical", "civil", "electrical", "hardware",
-            "circuit", "cad", "manufacturing",
-        ] if kw in jd_lower) if domain == "engineering" else 0
+    # Body text needs 3+ hits to avoid false positives
+    matched_in_text = [kw for kw in UNRELATED_PROFESSION_KEYWORDS
+                       if kw in resume_text_lower]
+    if len(matched_in_text) >= 3:
+        return True, matched_in_text
 
-        domain_scores[domain] = score
-
-    best_domain = max(domain_scores, key=domain_scores.get)
-    if domain_scores[best_domain] == 0:
-        return "general"
-    return best_domain
+    return False, []
 
 
 def check_eligibility(
     resume: ParsedResume,
-    jd_required_skills: list[str],
+    jd_required_skills: list,
     jd_min_experience: float,
     jd_min_education: str,
     jd_text: str,
     jd_title: str = "",
     sbert_model=None,
 ) -> EligibilityResult:
-    """
-    Forward chaining eligibility check.
-
-    Rules are fired sequentially. If any HARD rule fails,
-    the candidate is marked NA (Not Applicable).
-
-    Rule order:
-    1. Domain Mismatch Rule (hardest filter)
-    2. Minimum Skills Overlap Rule
-    3. Experience Floor Rule
-    4. Education Floor Rule (only if JD explicitly requires)
-
-    Returns EligibilityResult with full reasoning trace.
-    """
+    """Relaxed eligibility check — defaults to ELIGIBLE."""
     rules_fired = []
     is_eligible = True
     fail_reason = ""
+    skill_ratio = 0.5
 
-    resume_text_lower = resume.raw_text.lower()
-    resume_titles = [t.lower() for t in resume.job_titles]
     resume_skills_lower = set(s.lower() for s in resume.skills)
     jd_skills_lower = set(s.lower() for s in jd_required_skills)
 
-    # ─── Rule 1: Domain Mismatch ──────────────────────────────
-    jd_domain = _detect_jd_domain(jd_text)
-    incompatible_keywords = DOMAIN_KEYWORDS.get(jd_domain, [])
-
-    domain_mismatch_count = 0
-    matched_incompatible = []
-    for kw in incompatible_keywords:
-        if kw in resume_text_lower:
-            domain_mismatch_count += 1
-            matched_incompatible.append(kw)
-
-    # Also check if resume job titles are completely unrelated
-    title_mismatch = False
-    for jd_pattern, resume_pattern in INCOMPATIBLE_TITLE_PATTERNS:
-        if re.search(jd_pattern, jd_text) and any(
-            re.search(resume_pattern, t) for t in resume_titles
-        ):
-            title_mismatch = True
-
-    if domain_mismatch_count >= 2 or title_mismatch:
-        rule = RuleFiring(
-            rule_name="DomainMismatchRule",
-            condition=f"JD domain='{jd_domain}', resume contains incompatible terms: {matched_incompatible[:5]}",
+    # ─── Rule 1: Unrelated Profession ─────────────────────────
+    is_unrelated, matched_kw = _check_unrelated_profession(resume, jd_text)
+    if is_unrelated:
+        rules_fired.append(RuleFiring(
+            rule_name="UnrelatedProfessionRule",
+            condition=f"Unrelated profession indicators: {matched_kw[:3]}",
             result="FAIL",
-            details=f"Resume appears to be from a different professional domain. "
-                    f"Found {domain_mismatch_count} incompatible domain keywords."
-        )
-        rules_fired.append(rule)
+            details=f"Resume from clearly unrelated profession: {', '.join(matched_kw[:5])}.",
+        ))
         is_eligible = False
-        fail_reason = f"Domain mismatch: resume domain incompatible with {jd_domain} role"
+        fail_reason = f"Unrelated profession ({', '.join(matched_kw[:2])})"
     else:
         rules_fired.append(RuleFiring(
-            rule_name="DomainMismatchRule",
-            condition=f"JD domain='{jd_domain}'",
+            rule_name="UnrelatedProfessionRule",
+            condition="No unrelated profession keywords",
             result="PASS",
-            details="No significant domain mismatch detected."
+            details="Candidate's professional background is compatible.",
         ))
 
-    # ─── Rule 2: Minimum Skills Overlap ───────────────────────
+    # ─── Rule 2: Skill Overlap (ZERO match only) ──────────────
     if is_eligible and jd_skills_lower:
-        # Use basic keyword matching for eligibility (SBERT is for scoring)
         matched_skills = resume_skills_lower & jd_skills_lower
-        skill_ratio = len(matched_skills) / len(jd_skills_lower) if jd_skills_lower else 0
-
-        # Also do semantic check if SBERT available
         semantic_matches = 0
-        if sbert_model and jd_skills_lower - matched_skills:
+
+        # Semantic check (lenient threshold)
+        if sbert_model and (jd_skills_lower - matched_skills):
             import numpy as np
             unmatched_jd = list(jd_skills_lower - matched_skills)
             resume_skill_list = list(resume_skills_lower)
@@ -179,149 +124,111 @@ def check_eligibility(
                 jd_embs = sbert_model.encode(unmatched_jd)
                 res_embs = sbert_model.encode(resume_skill_list)
                 for j, jd_emb in enumerate(jd_embs):
-                    sims = [
-                        float(np.dot(jd_emb, r) / (np.linalg.norm(jd_emb) * np.linalg.norm(r) + 1e-8))
-                        for r in res_embs
-                    ]
-                    if max(sims) >= 0.75:
+                    sims = [float(np.dot(jd_emb, r) / (
+                        np.linalg.norm(jd_emb) * np.linalg.norm(r) + 1e-8))
+                        for r in res_embs]
+                    if sims and max(sims) >= 0.65:
                         semantic_matches += 1
-                        matched_skills.add(f"~{unmatched_jd[j]}")
 
-            total_matched = len(matched_skills)
-            skill_ratio = total_matched / len(jd_skills_lower)
+        total_matches = len(matched_skills) + semantic_matches
+        skill_ratio = total_matches / max(1, len(jd_skills_lower))
 
-        # NA ONLY if absolutely ZERO skills match (no rejection policy)
-        # A Java developer applying for Data Analyst still gets scored (low)
-        # Only Yoga Teacher / Plumber with 0/12 skills → NA
-        if skill_ratio <= 0.0 and len(matched_skills) == 0 and semantic_matches == 0:
-            rule = RuleFiring(
-                rule_name="MinSkillOverlapRule",
-                condition=f"Skill overlap = 0/{len(jd_skills_lower)} (zero match)",
+        # ONLY reject if ZERO matches AND resume has substantial skills
+        if total_matches == 0 and len(resume.skills) >= 3:
+            rules_fired.append(RuleFiring(
+                rule_name="SkillOverlapRule",
+                condition=f"0 matches out of {len(jd_skills_lower)} required",
                 result="FAIL",
-                details=f"Zero technical skills matched out of {len(jd_skills_lower)} required. "
-                        f"Candidate's profile is from a completely unrelated domain."
-            )
-            rules_fired.append(rule)
+                details=f"Zero overlap with {len(resume.skills)} listed skills.",
+            ))
             is_eligible = False
-            fail_reason = f"Zero skill match (0/{len(jd_skills_lower)} — unrelated domain)"
+            fail_reason = f"Zero skill overlap (0/{len(jd_skills_lower)})"
         else:
             rules_fired.append(RuleFiring(
-                rule_name="MinSkillOverlapRule",
-                condition=f"Skill overlap ratio = {skill_ratio:.0%}",
+                rule_name="SkillOverlapRule",
+                condition=f"{total_matches}/{len(jd_skills_lower)} matched ({skill_ratio:.0%})",
                 result="PASS",
-                details=f"Matched {len(matched_skills)} of {len(jd_skills_lower)} required skills."
+                details="Will be scored on D1.",
             ))
-    else:
-        skill_ratio = 0.5  # neutral if no JD skills specified
 
-
-    # ─── Rule 3: Experience Floor ─────────────────────────────
-    if is_eligible and jd_min_experience > 0:
+    # ─── Rule 3: Experience (always pass) ─────────────────────
+    if is_eligible:
         rules_fired.append(RuleFiring(
-            rule_name="ExperienceFloorRule",
-            condition=f"Candidate exp={resume.experience_years}y, required={jd_min_experience}y",
+            rule_name="ExperienceRule",
+            condition=f"exp={resume.experience_years}y, required={jd_min_experience}y",
             result="PASS",
-            details="No rejection policy — experience gap handled via scoring penalty in D2."
+            details="No rejection — handled via D2 scoring.",
         ))
 
-    # ─── Rule 4: Education Floor ──────────────────────────────
+    # ─── Rule 4: Education (specialized stream + 2-level gap) ─
     from resume_parser import EDUCATION_ORDINAL
     if is_eligible and jd_min_education:
         candidate_edu_ord = EDUCATION_ORDINAL.get(resume.education_level, 0)
         required_edu_ord = EDUCATION_ORDINAL.get(jd_min_education, 0)
 
-        # Check for specialized degree mismatch (e.g., LLB vs BE)
-        # These are in different streams — higher degree in wrong stream doesn't count
         SPECIALIZED_DEGREES = {
-            "llb": "law",
-            "law": "law",
-            "llm": "law",
-            "mbbs": "medicine",
-            "md": "medicine",
-            "bds": "medicine",
-            "medicine": "medicine",
+            "llb": "law", "llm": "law",
+            "mbbs": "medicine", "md ": "medicine", "bds": "medicine",
             "b.arch": "architecture",
-            "architecture": "architecture",
             "bfa": "arts",
-            "fine arts": "arts",
-            "b.ed": "education",
-            "education": "education",
         }
 
-        # Detect if JD requires a specialized degree
-        jd_edu_lower = jd_min_education.lower()
-        jd_text_lower = jd_text.lower()
+        jd_edu_lower = (jd_min_education + " " + jd_text).lower()
         jd_stream = None
         for keyword, stream in SPECIALIZED_DEGREES.items():
-            if keyword in jd_edu_lower or keyword in jd_text_lower:
+            if re.search(r"\b" + re.escape(keyword), jd_edu_lower):
                 jd_stream = stream
                 break
 
-        # Detect candidate's stream
         candidate_stream = None
         resume_edu_lower = (resume.education_text + " " + resume.education_level).lower()
         for keyword, stream in SPECIALIZED_DEGREES.items():
-            if keyword in resume_edu_lower:
+            if re.search(r"\b" + re.escape(keyword), resume_edu_lower):
                 candidate_stream = stream
                 break
 
-        # Rule logic:
-        # Case 1: JD requires specialized degree (LLB, MBBS etc.)
-        #         and candidate is from a DIFFERENT stream → NA
         if jd_stream and candidate_stream != jd_stream:
-            rule = RuleFiring(
-                rule_name="EducationFloorRule",
-                condition=f"JD requires '{jd_stream}' stream degree, "
-                          f"candidate has '{candidate_stream or 'general'}' stream",
+            rules_fired.append(RuleFiring(
+                rule_name="EducationStreamRule",
+                condition=f"JD requires '{jd_stream}', candidate has '{candidate_stream or 'general'}'",
                 result="FAIL",
-                details=f"JD requires a specialized {jd_stream} degree. "
-                        f"Candidate's education is in a different stream. "
-                        f"A higher degree in a different field does not qualify.",
-            )
-            rules_fired.append(rule)
+                details=f"Specialized {jd_stream} degree required.",
+            ))
             is_eligible = False
-            fail_reason = f"Wrong education stream ({candidate_stream or 'general'} vs required {jd_stream})"
-
-        # Case 2: JD requires general degree (Bachelors/Masters etc.)
-        #         Candidate has LOWER level → NA
-        #         e.g., JD requires BE and candidate has Diploma → NA
-        #         But candidate with MTech (higher than BE) → PASS
-        elif required_edu_ord > 0 and candidate_edu_ord < required_edu_ord:
-            rule = RuleFiring(
-                rule_name="EducationFloorRule",
-                condition=f"Candidate: '{resume.education_level}' (level {candidate_edu_ord}), "
-                          f"Required: '{jd_min_education}' (level {required_edu_ord})",
-                result="FAIL",
-                details=f"JD requires minimum {jd_min_education} (level {required_edu_ord}). "
-                        f"Candidate has {resume.education_level} (level {candidate_edu_ord}). "
-                        f"Education level is below minimum requirement.",
-            )
-            rules_fired.append(rule)
-            is_eligible = False
-            fail_reason = (f"Education below requirement "
-                          f"({resume.education_level} < {jd_min_education})")
-
-        # Case 3: Candidate meets or exceeds → PASS
+            fail_reason = f"Wrong education stream ({candidate_stream or 'general'} vs {jd_stream})"
+        elif required_edu_ord > 0 and candidate_edu_ord > 0:
+            gap = required_edu_ord - candidate_edu_ord
+            if gap >= 2:
+                rules_fired.append(RuleFiring(
+                    rule_name="EducationLevelRule",
+                    condition=f"Gap of {gap} levels below requirement",
+                    result="FAIL",
+                    details=f"Significant education gap ({resume.education_level} vs {jd_min_education}).",
+                ))
+                is_eligible = False
+                fail_reason = f"Education too low ({resume.education_level} vs {jd_min_education})"
+            else:
+                rules_fired.append(RuleFiring(
+                    rule_name="EducationLevelRule",
+                    condition=f"Candidate: {resume.education_level}, Required: {jd_min_education}",
+                    result="PASS",
+                    details="Education acceptable (within 1 level or higher).",
+                ))
         else:
             rules_fired.append(RuleFiring(
-                rule_name="EducationFloorRule",
-                condition=f"Candidate: '{resume.education_level}' (level {candidate_edu_ord}), "
-                          f"Required: '{jd_min_education}' (level {required_edu_ord})",
+                rule_name="EducationLevelRule",
+                condition="No strict education requirement",
                 result="PASS",
-                details=f"Education meets or exceeds requirement. "
-                        f"{'Higher degree — eligible.' if candidate_edu_ord > required_edu_ord else 'Matches requirement.'}",
+                details="Will score via D3.",
             ))
 
-            
-    # ─── Build Reasoning Trace ────────────────────────────────
+    # ─── Build Trace ──────────────────────────────────────────
     trace_lines = [f"=== Eligibility Check: {resume.name} ==="]
     for rf in rules_fired:
-        trace_lines.append(
-            f"  [{rf.result}] {rf.rule_name}: {rf.condition}\n"
-            f"         → {rf.details}"
-        )
+        trace_lines.append(f"  [{rf.result}] {rf.rule_name}: {rf.condition}")
+        trace_lines.append(f"         → {rf.details}")
     if is_eligible:
-        trace_lines.append("  VERDICT: ELIGIBLE — candidate proceeds to scoring.")
+        trace_lines.append("  VERDICT: ELIGIBLE — proceeds to scoring.")
     else:
         trace_lines.append(f"  VERDICT: NOT APPLICABLE — {fail_reason}")
 
