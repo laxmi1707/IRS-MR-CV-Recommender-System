@@ -58,7 +58,8 @@ async def rank_resumes(
         parsed_resumes = []
         for resume_file in resumes:
             file_bytes = await resume_file.read()
-            parsed = parse_resume(file_bytes, resume_file.filename)
+            filename = resume_file.filename or "resume.pdf"
+            parsed = parse_resume(file_bytes, filename)
             parsed_resumes.append(parsed)
 
         if not parsed_resumes:
@@ -146,7 +147,8 @@ async def rank_resumes(
 async def parse_single_resume(resume: UploadFile = File(...)):
     try:
         file_bytes = await resume.read()
-        parsed = parse_resume(file_bytes, resume.filename)
+        filename = resume.filename or "resume.pdf"
+        parsed = parse_resume(file_bytes, filename)
         return {
             "success": True,
             "data": {
