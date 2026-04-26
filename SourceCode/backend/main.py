@@ -9,8 +9,10 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 import json
 
+from decision_automation.eligibility_engine import check_eligibility
+from jd_processing.jd_parsing import parse_job_description
 from resume_processing.resume_parser import parse_resume
-from scoring_ranking_engine.scoring_engine import rank_candidates, parse_job_description
+from scoring_ranking_engine.scoring_engine import CandidateRanking, get_sbert_model, rank_candidates
 from business_optimization.ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
 
 app = FastAPI(
@@ -66,7 +68,49 @@ async def rank_resumes(
             return JSONResponse(status_code=400,
                 content={"success": False, "message": "No valid resumes."})
 
-        rankings = rank_candidates(parsed_resumes, jd, custom_weights)
+        sbert_model = get_sbert_model()
+
+        eligible_resumes = []
+        eligibility_results = []
+        not_applicable = []
+        for parsed_resume in parsed_resumes:
+            eligibility = check_eligibility(
+                resume=parsed_resume,
+                jd_required_skills=jd.required_skills,
+                jd_min_experience=jd.min_experience_years,
+                jd_min_education=jd.required_education,
+                jd_text=jd.description,
+                jd_title=jd.title,
+                sbert_model=sbert_model,
+            )
+
+            if eligibility.is_eligible:
+                eligible_resumes.append(parsed_resume)
+                eligibility_results.append(eligibility)
+                continue
+
+            not_applicable.append(CandidateRanking(
+                name=parsed_resume.name,
+                email=parsed_resume.email,
+                overall_score=0.0,
+                rank=-1,
+                is_eligible=False,
+                eligibility_reason=eligibility.reason,
+                eligibility_trace=eligibility.reasoning_trace,
+                experience_years=parsed_resume.experience_years,
+                education_level=parsed_resume.education_level,
+                job_titles=parsed_resume.job_titles,
+                notice_period_days=parsed_resume.notice_period_days,
+                justification=f"NOT APPLICABLE: {eligibility.reason}",
+                reasoning_chain=eligibility.reasoning_trace,
+            ))
+
+        rankings = rank_candidates(
+            eligible_resumes,
+            jd,
+            custom_weights,
+            eligibility_results=eligibility_results,
+        ) + not_applicable
 
         # Separate eligible and NA candidates
         eligible = [r for r in rankings if r.is_eligible]
@@ -172,4 +216,4 @@ async def get_all_weights():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)

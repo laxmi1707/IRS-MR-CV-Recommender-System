@@ -85,6 +85,8 @@ TECH_SKILLS_DB = [
     # Other
     "agile", "scrum", "jira", "rest api", "graphql", "microservices",
     "system design", "oop", "design patterns", "html", "css",
+    "banking", "finance", "healthcare", "e-commerce", "cybersecurity", "blockchain"
+    
 ]
 
 # ─── Education Level Mapping ──────────────────────────────────

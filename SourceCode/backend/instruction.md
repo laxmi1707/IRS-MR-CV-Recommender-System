@@ -22,7 +22,7 @@ From the repository root:
 
 ```powershell
 cd IRS-MR-CV-Recommender-System
-python -m venv .venv
+py -3.12 -m venv .venv
 ```
 
 Activate it on Windows PowerShell:
@@ -41,6 +41,23 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
+If dependency installation fails on Windows with an error similar to:
+
+```text
+OSError: [Errno 2] No such file or directory
+```
+
+and the path includes a deep package path such as `transformers`, use a short drive mapping and retry:
+
+```powershell
+subst X: "C:\full\path\to\IRS-MR-CV-Recommender-System"
+cd X:\SourceCode\backend
+X:\.venv\Scripts\python.exe -m pip install --upgrade pip
+X:\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+This avoids Windows path-length issues during package extraction.
+
 ## Run The Backend
 
 Option 1: Run with uvicorn directly
@@ -50,12 +67,16 @@ cd SourceCode\backend
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+Use this option when you want auto-reload during development.
+
 Option 2: Run the Python entrypoint
 
 ```powershell
 cd SourceCode\backend
 python main.py
 ```
+
+Use this option for a direct non-reload launch of the backend.
 
 ## Verify The Backend Is Running
 
@@ -102,3 +123,5 @@ python -m pip install -r requirements.txt
 ```
 
 If you get package build failures on Python `3.13`, switch to Python `3.10` to `3.12`, recreate the virtual environment, and reinstall dependencies.
+
+If you get a long-path install error on Windows while installing `transformers` or another deep dependency tree, use a short drive mapping with `subst` and rerun the install from that mapped drive.
