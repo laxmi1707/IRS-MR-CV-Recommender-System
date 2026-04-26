@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from resume_processing.resume_parser import ParsedResume, EDUCATION_ORDINAL
-from decision_automation.eligibility_engine import check_eligibility
 from decision_automation.expert_flags import assign_expert_flags
 from business_optimization.ga_optimizer import get_optimized_weights
 
@@ -352,9 +351,14 @@ def score_miscellaneous(resume, jd):
 # ═══════════════════════════════════════════════════════════════
 # MAIN PIPELINE
 # ═══════════════════════════════════════════════════════════════
-def rank_candidates(resumes, jd, custom_weights=None):
-    """Full 6-step ICRS pipeline."""
+def rank_candidates(resumes, jd, custom_weights=None, eligibility_results=None):
+    """Score and rank resumes that have already passed eligibility."""
     sbert_model = get_sbert_model()
+
+    if eligibility_results is None:
+        eligibility_results = [None] * len(resumes)
+    elif len(eligibility_results) != len(resumes):
+        raise ValueError("eligibility_results must align 1:1 with resumes")
 
     if custom_weights:
         weights = custom_weights
@@ -363,39 +367,15 @@ def rank_candidates(resumes, jd, custom_weights=None):
         weights, ga_category = get_optimized_weights(jd.title, jd.description)
 
     pq = []
-    na_candidates = []
 
     for idx, resume in enumerate(resumes):
         chain_parts = []
+        eligibility = eligibility_results[idx]
 
-        # Step 1: Eligibility
-        eligibility = check_eligibility(
-            resume=resume,
-            jd_required_skills=jd.required_skills,
-            jd_min_experience=jd.min_experience_years,
-            jd_min_education=jd.required_education,
-            jd_text=jd.description,
-            jd_title=jd.title,
-            sbert_model=sbert_model,
-        )
-        chain_parts.append(eligibility.reasoning_trace)
-
-        if not eligibility.is_eligible:
-            na = CandidateRanking(
-                name=resume.name, email=resume.email,
-                overall_score=0.0, rank=-1,
-                is_eligible=False,
-                eligibility_reason=eligibility.reason,
-                eligibility_trace=eligibility.reasoning_trace,
-                experience_years=resume.experience_years,
-                education_level=resume.education_level,
-                job_titles=resume.job_titles,
-                notice_period_days=resume.notice_period_days,
-                justification=f"NOT APPLICABLE: {eligibility.reason}",
-                reasoning_chain=eligibility.reasoning_trace,
-            )
-            na_candidates.append(na)
-            continue
+        if eligibility is not None:
+            if not eligibility.is_eligible:
+                raise ValueError("rank_candidates received a non-eligible resume")
+            chain_parts.append(eligibility.reasoning_trace)
 
         # Step 2: Expert Flags
         flag_result = assign_expert_flags(
@@ -477,7 +457,7 @@ def rank_candidates(resumes, jd, custom_weights=None):
             job_titles=resume.job_titles,
             notice_period_days=resume.notice_period_days,
             is_eligible=True, eligibility_reason="ELIGIBLE",
-            eligibility_trace=eligibility.reasoning_trace,
+            eligibility_trace=eligibility.reasoning_trace if eligibility else "",
             expert_flags=[{
                 "name": f.flag_name, "type": f.flag_type,
                 "modifier": f.score_modifier, "reason": f.reason,
@@ -498,10 +478,6 @@ def rank_candidates(resumes, jd, custom_weights=None):
         results.append(ranking)
         rank += 1
 
-    for na in na_candidates:
-        na.rank = -1
-        results.append(na)
-
     return results
 
 
@@ -520,28 +496,3 @@ def _generate_justification(resume, dim_scores, overall, flag_result):
         parts.append(f"Flags: {', '.join(f.flag_name for f in flag_result.penalty_flags)}.")
 
     return " ".join(parts)
-
-
-def parse_job_description(text: str, title: str = "") -> JobDescription:
-    from resume_processing.resume_parser import extract_skills, EDUCATION_LEVELS, EDUCATION_ORDINAL
-
-    skills = extract_skills(text)
-    exp_match = re.findall(r"(\d{1,2})\+?\s*(?:years?|yrs?)", text, re.IGNORECASE)
-    min_exp = float(exp_match[0]) if exp_match else 3.0
-
-    text_lower = text.lower()
-    edu_level = "Bachelors"
-    highest_ord = 3
-    for keyword, level in EDUCATION_LEVELS.items():
-        if keyword in text_lower:
-            ord_val = EDUCATION_ORDINAL.get(level, 0)
-            if ord_val > highest_ord:
-                highest_ord = ord_val
-                edu_level = level
-
-    return JobDescription(
-        title=title or "Software Engineer",
-        description=text, required_skills=skills,
-        min_experience_years=min_exp,
-        required_education=edu_level, max_notice_period_days=90,
-    )
