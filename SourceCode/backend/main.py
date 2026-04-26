@@ -9,9 +9,9 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 import json
 
-from resume_parser import parse_resume
-from scoring_engine import rank_candidates, parse_job_description
-from ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
+from resume_processing.resume_parser import parse_resume
+from scoring_ranking_engine.scoring_engine import rank_candidates, parse_job_description
+from business_optimization.ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
 
 app = FastAPI(
     title="S-Rank ICRS API",

@@ -17,9 +17,11 @@ from collections import defaultdict
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+SOURCE_CODE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if SOURCE_CODE_DIR not in sys.path:
+    sys.path.insert(0, SOURCE_CODE_DIR)
 
-from ga_optimizer import run_ga_optimization, detect_job_category
+from business_optimization.ga_optimizer import run_ga_optimization, detect_job_category
 
 # File paths
 GT_FILE = "../dataset/GroundTruth/GroundTruth_Data_Candidate Ranking with JD Id.xlsx"
