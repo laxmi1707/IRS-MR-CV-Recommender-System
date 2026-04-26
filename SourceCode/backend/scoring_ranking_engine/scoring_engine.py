@@ -15,21 +15,54 @@ Philosophy: NO candidate scores below ~35 unless truly irrelevant.
 import re
 import math
 import heapq
+import importlib
 from dataclasses import dataclass, field
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
-from resume_parser import ParsedResume, EDUCATION_ORDINAL
-from eligibility_engine import check_eligibility
-from expert_flags import assign_expert_flags
-from ga_optimizer import get_optimized_weights
+from resume_processing.resume_parser import ParsedResume, EDUCATION_ORDINAL
+from decision_automation.eligibility_engine import check_eligibility
+from decision_automation.expert_flags import assign_expert_flags
+from business_optimization.ga_optimizer import get_optimized_weights
 
 
-# Load SBERT Model
-print("[ICRS] Loading SBERT model (all-MiniLM-L6-v2)...")
-sbert_model = SentenceTransformer("all-MiniLM-L6-v2")
-print("[ICRS] SBERT model loaded.")
+_sbert_model = None
+_sbert_load_attempted = False
+
+
+def get_sbert_model():
+    global _sbert_model, _sbert_load_attempted
+
+    if _sbert_load_attempted:
+        return _sbert_model
+
+    _sbert_load_attempted = True
+    try:
+        print("[ICRS] Loading SBERT model (all-MiniLM-L6-v2)...")
+        sentence_transformers = importlib.import_module("sentence_transformers")
+        _sbert_model = sentence_transformers.SentenceTransformer("all-MiniLM-L6-v2")
+        print("[ICRS] SBERT model loaded.")
+    except Exception as exc:
+        _sbert_model = None
+        print(f"[ICRS] SBERT unavailable, using lexical fallback. {exc}")
+
+    return _sbert_model
+
+
+def _cosine_similarity(vec_a, vec_b):
+    return float(np.dot(vec_a, vec_b) / (
+        np.linalg.norm(vec_a) * np.linalg.norm(vec_b) + 1e-8
+    ))
+
+
+def _token_similarity(text_a, text_b):
+    tokens_a = set(re.findall(r"[a-z0-9+#.]+", (text_a or "").lower()))
+    tokens_b = set(re.findall(r"[a-z0-9+#.]+", (text_b or "").lower()))
+
+    if not tokens_a or not tokens_b:
+        return 0.0
+
+    return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
 
 
 @dataclass
@@ -99,6 +132,7 @@ APRIORI_BONUS = 0.03
 def score_technical_skills(resume, jd):
     resume_skills_set = set(s.lower() for s in resume.skills)
     jd_skills_set = set(s.lower() for s in jd.required_skills)
+    sbert_model = get_sbert_model()
 
     if not jd_skills_set:
         return 0.70, "No specific skills in JD — neutral.", [], []
@@ -111,15 +145,13 @@ def score_technical_skills(resume, jd):
 
     # SBERT semantic match (lenient 0.65 threshold)
     semantic_matched = set()
-    if missing and resume_skills_set:
+    if sbert_model and missing and resume_skills_set:
         unmatched_list = list(missing)
         resume_list = list(resume_skills_set)
         jd_embs = sbert_model.encode(unmatched_list)
         res_embs = sbert_model.encode(resume_list)
         for j, jd_emb in enumerate(jd_embs):
-            sims = [float(np.dot(jd_emb, r) / (
-                np.linalg.norm(jd_emb) * np.linalg.norm(r) + 1e-8))
-                for r in res_embs]
+            sims = [_cosine_similarity(jd_emb, resume_emb) for resume_emb in res_embs]
             if sims and max(sims) >= 0.65:
                 semantic_matched.add(unmatched_list[j])
                 missing.discard(unmatched_list[j])
@@ -139,10 +171,12 @@ def score_technical_skills(resume, jd):
     # Overall JD-resume relevance boost (prevents harsh scores)
     relevance_boost = 0.0
     if resume.raw_text and jd.description:
-        jd_emb = np.array(sbert_model.encode(jd.description[:500])).flatten()
-        res_emb = np.array(sbert_model.encode(resume.raw_text[:1000])).flatten()
-        overall_sim = float(np.dot(jd_emb, res_emb) / (
-            np.linalg.norm(jd_emb) * np.linalg.norm(res_emb) + 1e-8))
+        if sbert_model:
+            jd_emb = np.array(sbert_model.encode(jd.description[:500])).flatten()
+            res_emb = np.array(sbert_model.encode(resume.raw_text[:1000])).flatten()
+            overall_sim = _cosine_similarity(jd_emb, res_emb)
+        else:
+            overall_sim = _token_similarity(jd.description, resume.raw_text)
         relevance_boost = max(0, overall_sim) * 0.25
 
     # Final: 50% skills + relevance + apriori
@@ -266,28 +300,39 @@ def score_availability(resume, jd):
 # ═══════════════════════════════════════════════════════════════
 def score_miscellaneous(resume, jd):
     components = []
+    sbert_model = get_sbert_model()
 
     if resume.job_titles and jd.title:
-        all_titles = resume.job_titles + [jd.title]
-        embs = sbert_model.encode(all_titles)
-        jd_emb = np.array(embs[-1])
-        best_sim, best_title = 0.0, ""
-        for i, title in enumerate(resume.job_titles):
-            title_emb = np.array(embs[i])
-            sim = float(np.dot(title_emb, jd_emb) / (
-                np.linalg.norm(title_emb) * np.linalg.norm(jd_emb) + 1e-8))
-            if sim > best_sim:
-                best_sim, best_title = sim, title
+        if sbert_model:
+            all_titles = resume.job_titles + [jd.title]
+            embs = sbert_model.encode(all_titles)
+            jd_emb = np.array(embs[-1])
+            best_sim, best_title = 0.0, ""
+            for i, title in enumerate(resume.job_titles):
+                title_emb = np.array(embs[i])
+                sim = _cosine_similarity(title_emb, jd_emb)
+                if sim > best_sim:
+                    best_sim, best_title = sim, title
+        else:
+            best_title = max(
+                resume.job_titles,
+                key=lambda title: _token_similarity(title, jd.title),
+                default="",
+            )
+            best_sim = _token_similarity(best_title, jd.title)
+
         components.append(("title", max(0.0, best_sim), best_title))
     else:
         components.append(("title", 0.55, "none"))
 
     summary = resume.summary or resume.raw_text[:500]
     if summary and jd.description:
-        embs = sbert_model.encode([summary, jd.description])
-        e0, e1 = np.array(embs[0]), np.array(embs[1])
-        rel = float(np.dot(e0, e1) / (
-            np.linalg.norm(e0) * np.linalg.norm(e1) + 1e-8))
+        if sbert_model:
+            embs = sbert_model.encode([summary, jd.description])
+            e0, e1 = np.array(embs[0]), np.array(embs[1])
+            rel = _cosine_similarity(e0, e1)
+        else:
+            rel = _token_similarity(summary, jd.description)
         components.append(("relevance", max(0.0, rel), ""))
     else:
         components.append(("relevance", 0.55, ""))
@@ -309,6 +354,8 @@ def score_miscellaneous(resume, jd):
 # ═══════════════════════════════════════════════════════════════
 def rank_candidates(resumes, jd, custom_weights=None):
     """Full 6-step ICRS pipeline."""
+    sbert_model = get_sbert_model()
+
     if custom_weights:
         weights = custom_weights
         ga_category = "custom"
@@ -476,7 +523,7 @@ def _generate_justification(resume, dim_scores, overall, flag_result):
 
 
 def parse_job_description(text: str, title: str = "") -> JobDescription:
-    from resume_parser import extract_skills, EDUCATION_LEVELS, EDUCATION_ORDINAL
+    from resume_processing.resume_parser import extract_skills, EDUCATION_LEVELS, EDUCATION_ORDINAL
 
     skills = extract_skills(text)
     exp_match = re.findall(r"(\d{1,2})\+?\s*(?:years?|yrs?)", text, re.IGNORECASE)

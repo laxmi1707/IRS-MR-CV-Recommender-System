@@ -13,7 +13,7 @@ Flags (T/F logic):
 
 import re
 from dataclasses import dataclass, field
-from resume_parser import ParsedResume, EDUCATION_ORDINAL
+from resume_processing.resume_parser import ParsedResume, EDUCATION_ORDINAL
 
 
 @dataclass
@@ -25,6 +25,14 @@ class ExpertFlag:
     dimension_affected: str
     reason: str
     confidence: float
+
+    @property
+    def flag_type(self) -> str:
+        if self.score_modifier > 0:
+            return "BONUS"
+        if self.score_modifier < 0:
+            return "PENALTY"
+        return "INFO"
 
 
 @dataclass
