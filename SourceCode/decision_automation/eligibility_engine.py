@@ -15,7 +15,11 @@ All other candidates proceed to scoring. Weaker fit → lower score, still ranke
 
 import re
 from dataclasses import dataclass, field
-from ..cognitive_techniques.resume_parser import ParsedResume
+
+try:
+    from resume_parser import ParsedResume
+except ImportError:
+    from .resume_parser import ParsedResume
 
 
 @dataclass
@@ -161,7 +165,10 @@ def check_eligibility(
         ))
 
     # ─── Rule 4: Education (specialized stream + 2-level gap) ─
-    from ..cognitive_techniques.resume_parser import EDUCATION_ORDINAL
+    try:
+        from resume_parser import EDUCATION_ORDINAL
+    except ImportError:
+        from .resume_parser import EDUCATION_ORDINAL
     if is_eligible and jd_min_education:
         candidate_edu_ord = EDUCATION_ORDINAL.get(resume.education_level, 0)
         required_edu_ord = EDUCATION_ORDINAL.get(jd_min_education, 0)

@@ -8,15 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional
 import json
-from importlib import import_module
 
-from cognitive_techniques.resume_parser import parse_resume
-from knowledge_discovery.scoring_engine import rank_candidates, parse_job_description
-
-# Import ga_optimizer with space in folder name using importlib
-_ga_optimizer_module = import_module("business _optimization.ga_optimizer")
-CATEGORY_WEIGHTS = _ga_optimizer_module.CATEGORY_WEIGHTS
-detect_job_category = _ga_optimizer_module.detect_job_category
+from resume_parser import parse_resume
+from scoring_engine import rank_candidates, parse_job_description
+from ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
 
 app = FastAPI(
     title="S-Rank ICRS API",
@@ -63,8 +58,7 @@ async def rank_resumes(
         parsed_resumes = []
         for resume_file in resumes:
             file_bytes = await resume_file.read()
-            filename = resume_file.filename or "resume.pdf"
-            parsed = parse_resume(file_bytes, filename)
+            parsed = parse_resume(file_bytes, resume_file.filename)
             parsed_resumes.append(parsed)
 
         if not parsed_resumes:
@@ -152,8 +146,7 @@ async def rank_resumes(
 async def parse_single_resume(resume: UploadFile = File(...)):
     try:
         file_bytes = await resume.read()
-        filename = resume.filename or "resume.pdf"
-        parsed = parse_resume(file_bytes, filename)
+        parsed = parse_resume(file_bytes, resume.filename)
         return {
             "success": True,
             "data": {

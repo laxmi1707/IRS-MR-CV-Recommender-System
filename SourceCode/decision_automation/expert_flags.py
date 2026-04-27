@@ -13,7 +13,7 @@ Flags (T/F logic):
 
 import re
 from dataclasses import dataclass, field
-from ..cognitive_techniques.resume_parser import ParsedResume, EDUCATION_ORDINAL
+from resume_parser import ParsedResume, EDUCATION_ORDINAL
 
 
 @dataclass

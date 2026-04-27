@@ -16,18 +16,14 @@ import re
 import math
 import heapq
 from dataclasses import dataclass, field
-from importlib import import_module
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from ..cognitive_techniques.resume_parser import ParsedResume, EDUCATION_ORDINAL
-from ..decision_automation.eligibility_engine import check_eligibility
-from ..decision_automation.expert_flags import assign_expert_flags
-
-# Import ga_optimizer with space in folder name using importlib
-_ga_optimizer_module = import_module("..business _optimization.ga_optimizer", __package__)
-get_optimized_weights = _ga_optimizer_module.get_optimized_weights
+from resume_parser import ParsedResume, EDUCATION_ORDINAL
+from eligibility_engine import check_eligibility
+from expert_flags import assign_expert_flags
+from ga_optimizer import get_optimized_weights
 
 
 # Load SBERT Model
@@ -480,21 +476,16 @@ def _generate_justification(resume, dim_scores, overall, flag_result):
 
 
 def parse_job_description(text: str, title: str = "") -> JobDescription:
-    from ..cognitive_techniques.resume_parser import extract_skills, EDUCATION_LEVELS, EDUCATION_ORDINAL
+    from resume_parser import extract_skills, extract_education_level, EDUCATION_ORDINAL
 
     skills = extract_skills(text)
     exp_match = re.findall(r"(\d{1,2})\+?\s*(?:years?|yrs?)", text, re.IGNORECASE)
     min_exp = float(exp_match[0]) if exp_match else 3.0
 
-    text_lower = text.lower()
-    edu_level = "Bachelors"
-    highest_ord = 3
-    for keyword, level in EDUCATION_LEVELS.items():
-        if keyword in text_lower:
-            ord_val = EDUCATION_ORDINAL.get(level, 0)
-            if ord_val > highest_ord:
-                highest_ord = ord_val
-                edu_level = level
+    # Use the strict, word-boundary-aware extractor — same logic as for resumes.
+    # Default to Bachelors if nothing detected (most professional roles assume this).
+    detected_level = extract_education_level(text)
+    edu_level = detected_level if detected_level != "Unknown" else "Bachelors"
 
     return JobDescription(
         title=title or "Software Engineer",

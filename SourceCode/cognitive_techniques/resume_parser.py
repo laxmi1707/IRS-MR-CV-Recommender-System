@@ -220,39 +220,154 @@ def extract_skills(text: str) -> list[str]:
 
 
 def extract_experience_years(text: str) -> float:
-    """Estimate total years of experience from text patterns."""
-    # Pattern 1: "X years of experience" or "X+ years"
+    """Estimate total years of experience from text patterns.
+
+    Three strategies, in priority order:
+      1. Explicit statement like "11 years of experience"
+      2. Date ranges with month names: "Aug 2023 - Ongoing", "Jun-2018 - Jan-2020"
+      3. Plain year ranges: "2019 - 2023"
+    """
+    # ─── Pattern 1: explicit "X years of experience" ──────
     matches = re.findall(
         r"(\d{1,2})\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp)",
-        text, re.IGNORECASE
+        text, re.IGNORECASE,
     )
     if matches:
-        return max(float(m) for m in matches)
+        return min(40.0, max(float(m) for m in matches))
 
-    # Pattern 2: Count distinct year ranges (2019-2023 = 4 years)
-    year_ranges = re.findall(r"(20\d{2})\s*[-–—to]+\s*(20\d{2}|present|current)",
-                             text, re.IGNORECASE)
+    # ─── Pattern 2: month + year ranges ───────────────────
+    # Catches "Aug 2023 - Ongoing", "Jun-2018 - Jan-2020", "Jan 2020 – Jun 2021"
+    # Months can be abbreviated; separator can be space or hyphen
+    MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
+    range_re = re.compile(
+        rf"{MONTH}[\s\-]*?(\d{{4}})\s*[-–—]\s*"
+        rf"(?:{MONTH}[\s\-]*?(\d{{4}})|(Present|Ongoing|Current|Now))",
+        re.IGNORECASE,
+    )
+    total_months = 0
+    for m in range_re.finditer(text):
+        start_year = int(m.group(1))
+        if m.group(2):
+            end_year = int(m.group(2))
+        else:
+            end_year = 2026  # Present/Ongoing
+        if 1990 <= start_year <= 2030 and end_year >= start_year:
+            total_months += max(0, (end_year - start_year) * 12)
+
+    if total_months > 0:
+        return min(40.0, total_months / 12.0)
+
+    # ─── Pattern 3: plain "YYYY - YYYY" ───────────────────
+    plain_ranges = re.findall(
+        r"(20\d{2})\s*[-–—]\s*(20\d{2}|present|current|ongoing)",
+        text, re.IGNORECASE,
+    )
     total = 0
-    for start, end in year_ranges:
+    for start, end in plain_ranges:
         start_y = int(start)
-        end_y = 2026 if end.lower() in ("present", "current") else int(end)
+        end_y = 2026 if end.lower() in ("present", "current", "ongoing") else int(end)
         total += max(0, end_y - start_y)
 
-    return min(total, 40)  # cap at 40 years
+    return min(40.0, float(total))
 
 
 def extract_education_level(text: str) -> str:
-    """Determine highest education level mentioned."""
+    """Determine highest education level mentioned.
+
+    Uses word-boundary regex to avoid:
+      - 'scrum master' matching 'master'
+      - 'project associate' matching 'associate'
+      - 'phpdev' matching 'phd'
+      - 'masterclass' matching 'master'
+
+    Also rejects matches whose immediate context is clearly NOT
+    an academic degree (e.g. 'scrum master', 'master of ceremonies',
+    'master class', 'master degree program' is OK).
+    """
     text_lower = text.lower()
     highest = "Unknown"
     highest_ord = -1
 
-    for keyword, level in EDUCATION_LEVELS.items():
-        if keyword in text_lower:
+    # Words that, when adjacent to "master"/"associate"/etc., indicate
+    # a NON-academic context. We reject the match if these are nearby.
+    REJECT_NEAR_MASTER = [
+        "scrum", "project", "product", "story", "ceremony", "ceremonies",
+        "class", "key", "mind", "yoga", "chess", "game",
+    ]
+    REJECT_NEAR_ASSOCIATE = [
+        "project", "junior", "senior", "sales", "marketing", "research",
+        "executive", "team",
+    ]
+    REJECT_NEAR_PHD = [
+        # rare false positives, mostly safe
+    ]
+
+    # Build patterns with word boundaries
+    # Order matters: longer/more-specific keys first
+    education_keys = [
+        ("phd", "PhD"),
+        ("ph.d", "PhD"),
+        ("ph\\.d\\.", "PhD"),
+        ("doctorate", "PhD"),
+        ("doctor of philosophy", "PhD"),
+        ("master of", "Masters"),
+        ("master's", "Masters"),
+        ("masters degree", "Masters"),
+        ("master degree", "Masters"),
+        ("m\\.tech", "Masters"),
+        ("mtech", "Masters"),
+        ("m\\.sc", "Masters"),
+        ("msc", "Masters"),
+        ("m\\.s\\.", "Masters"),
+        ("m\\.eng", "Masters"),
+        ("meng", "Masters"),
+        ("mba", "Masters"),
+        ("master", "Masters"),  # fallback — applies REJECT list
+        ("bachelor of", "Bachelors"),
+        ("bachelor's", "Bachelors"),
+        ("bachelors degree", "Bachelors"),
+        ("bachelor degree", "Bachelors"),
+        ("b\\.tech", "Bachelors"),
+        ("btech", "Bachelors"),
+        ("b\\.sc", "Bachelors"),
+        ("bsc", "Bachelors"),
+        ("b\\.e\\.", "Bachelors"),
+        ("b\\.eng", "Bachelors"),
+        ("beng", "Bachelors"),
+        ("bachelor", "Bachelors"),
+        ("diploma", "Diploma"),
+        ("associate of", "Diploma"),
+        ("associate degree", "Diploma"),
+        ("associate", "Diploma"),  # applies REJECT list
+        ("certificate", "Certificate"),
+        ("high school", "HighSchool"),
+        ("secondary school", "HighSchool"),
+    ]
+
+    for keyword_pat, level in education_keys:
+        # word-boundary regex
+        pat = r"\b" + keyword_pat + r"\b"
+        for m in re.finditer(pat, text_lower):
+            # Pull a small window around the match to inspect context
+            start = max(0, m.start() - 25)
+            end = min(len(text_lower), m.end() + 25)
+            context = text_lower[start:end]
+
+            # Apply rejection rules
+            matched_word = m.group(0)
+            if matched_word == "master":
+                if any(reject in context for reject in REJECT_NEAR_MASTER):
+                    continue
+            if matched_word == "associate":
+                if any(reject in context for reject in REJECT_NEAR_ASSOCIATE):
+                    continue
+
+            # Accept this match
             ord_val = EDUCATION_ORDINAL.get(level, 0)
             if ord_val > highest_ord:
                 highest_ord = ord_val
                 highest = level
+            break  # one match per keyword is enough
 
     return highest
 
@@ -329,6 +444,20 @@ def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
     # Clean name: remove common non-name elements
     name = re.sub(r"(?i)curriculum\s+vitae|resume|cv", "", name).strip()
 
+    # Education: STRONGLY prefer the EDUCATION section.
+    # This avoids matching "Scrum Master Certified" in skills as "Masters degree".
+    # Only fall back to the full text if no EDUCATION section was detected.
+    if education_text and len(education_text.strip()) > 10:
+        education_level = extract_education_level(education_text)
+        # If the dedicated section yielded nothing, scan summary too (some CVs
+        # mention "Master's degree" only in the summary, not under EDUCATION)
+        if education_level == "Unknown":
+            summary_text = sections.get("summary", "")
+            education_level = extract_education_level(education_text + " " + summary_text)
+    else:
+        # No education section — fall back to full text but with the strict matcher
+        education_level = extract_education_level(raw_text)
+
     resume = ParsedResume(
         raw_text=raw_text,
         name=name[:100],
@@ -337,7 +466,7 @@ def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
         skills=extract_skills(skills_text),
         experience_years=extract_experience_years(raw_text),
         experience_text=experience_text[:2000],
-        education_level=extract_education_level(education_text or raw_text),
+        education_level=education_level,
         education_text=education_text[:1000],
         job_titles=extract_job_titles(raw_text),
         notice_period_days=extract_notice_period(raw_text),
