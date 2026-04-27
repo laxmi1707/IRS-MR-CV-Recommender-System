@@ -9,11 +9,11 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 import json
 
-from decision_automation.eligibility_engine import check_eligibility
-from jd_processing.jd_parsing import parse_job_description
-from resume_processing.resume_parser import parse_resume
-from scoring_ranking_engine.scoring_engine import CandidateRanking, get_sbert_model, rank_candidates
-from business_optimization.ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
+from .decision_automation.eligibility_engine import check_eligibility
+from .jd_processing.jd_parsing import parse_job_description
+from .resume_processing.resume_parser import parse_resume
+from .scoring_ranking_engine.scoring_engine import CandidateRanking, get_sbert_model, rank_candidates
+from .business_optimization.ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
 
 app = FastAPI(
     title="S-Rank ICRS API",

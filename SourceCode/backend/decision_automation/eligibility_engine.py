@@ -15,15 +15,7 @@ All other candidates proceed to scoring. Weaker fit → lower score, still ranke
 
 import re
 from dataclasses import dataclass, field
-<<<<<<< HEAD:SourceCode/decision_automation/eligibility_engine.py
-
-try:
-    from resume_parser import ParsedResume
-except ImportError:
-    from .resume_parser import ParsedResume
-=======
-from resume_processing.resume_parser import ParsedResume
->>>>>>> db4bb0ecc16a455709bdb3ec2dbe1cfd9bf2689e:SourceCode/backend/decision_automation/eligibility_engine.py
+from ..resume_processing.resume_parser import ParsedResume
 
 
 @dataclass
@@ -169,14 +161,7 @@ def check_eligibility(
         ))
 
     # ─── Rule 4: Education (specialized stream + 2-level gap) ─
-<<<<<<< HEAD:SourceCode/decision_automation/eligibility_engine.py
-    try:
-        from resume_parser import EDUCATION_ORDINAL
-    except ImportError:
-        from .resume_parser import EDUCATION_ORDINAL
-=======
-    from resume_processing.resume_parser import EDUCATION_ORDINAL
->>>>>>> db4bb0ecc16a455709bdb3ec2dbe1cfd9bf2689e:SourceCode/backend/decision_automation/eligibility_engine.py
+    from ..resume_processing.resume_parser import EDUCATION_ORDINAL
     if is_eligible and jd_min_education:
         candidate_edu_ord = EDUCATION_ORDINAL.get(resume.education_level, 0)
         required_edu_ord = EDUCATION_ORDINAL.get(jd_min_education, 0)

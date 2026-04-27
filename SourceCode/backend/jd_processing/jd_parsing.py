@@ -1,7 +1,7 @@
 import re
 
-from resume_processing.resume_parser import extract_skills, EDUCATION_LEVELS, EDUCATION_ORDINAL
-from scoring_ranking_engine.scoring_engine import JobDescription
+from ..resume_processing.resume_parser import extract_skills, EDUCATION_LEVELS, EDUCATION_ORDINAL
+from ..scoring_ranking_engine.scoring_engine import JobDescription
 
 
 def parse_job_description(text: str, title: str = "") -> JobDescription:

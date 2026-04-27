@@ -1,17 +1,3 @@
-"""
-scoring_engine.py — Steps 3-4-6: Five-Dimensional Scoring + Best-First Search
-Complete ICRS Pipeline (CALIBRATED to Ground Truth)
-
-Based on JDVsCDRanking.csv analysis:
-- Skills: 40-95 range
-- Experience: 50-100 range
-- Education: 60-90 range
-- Availability: defaults ~85
-- Misc: 55-95 range
-
-Philosophy: NO candidate scores below ~35 unless truly irrelevant.
-"""
-
 import re
 import math
 import heapq
@@ -20,9 +6,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from resume_processing.resume_parser import ParsedResume, EDUCATION_ORDINAL
-from decision_automation.expert_flags import assign_expert_flags
-from business_optimization.ga_optimizer import get_optimized_weights
+from ..resume_processing.resume_parser import ParsedResume, EDUCATION_ORDINAL
+from ..decision_automation.expert_flags import assign_expert_flags
+from ..business_optimization.ga_optimizer import get_optimized_weights
 
 
 _sbert_model = None
