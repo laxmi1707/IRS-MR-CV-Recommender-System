@@ -8,10 +8,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional
 import json
+from importlib import import_module
 
-from resume_parser import parse_resume
-from scoring_engine import rank_candidates, parse_job_description
-from ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
+from cognitive_techniques.resume_parser import parse_resume
+from knowledge_discovery.scoring_engine import rank_candidates, parse_job_description
+
+# Import ga_optimizer with space in folder name using importlib
+_ga_optimizer_module = import_module("business _optimization.ga_optimizer")
+CATEGORY_WEIGHTS = _ga_optimizer_module.CATEGORY_WEIGHTS
+detect_job_category = _ga_optimizer_module.detect_job_category
 
 app = FastAPI(
     title="S-Rank ICRS API",

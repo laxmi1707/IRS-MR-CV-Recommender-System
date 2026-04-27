@@ -16,14 +16,18 @@ import re
 import math
 import heapq
 from dataclasses import dataclass, field
+from importlib import import_module
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from resume_parser import ParsedResume, EDUCATION_ORDINAL
-from eligibility_engine import check_eligibility
-from expert_flags import assign_expert_flags
-from ga_optimizer import get_optimized_weights
+from ..cognitive_techniques.resume_parser import ParsedResume, EDUCATION_ORDINAL
+from ..decision_automation.eligibility_engine import check_eligibility
+from ..decision_automation.expert_flags import assign_expert_flags
+
+# Import ga_optimizer with space in folder name using importlib
+_ga_optimizer_module = import_module("..business _optimization.ga_optimizer", __package__)
+get_optimized_weights = _ga_optimizer_module.get_optimized_weights
 
 
 # Load SBERT Model
@@ -476,7 +480,7 @@ def _generate_justification(resume, dim_scores, overall, flag_result):
 
 
 def parse_job_description(text: str, title: str = "") -> JobDescription:
-    from resume_parser import extract_skills, EDUCATION_LEVELS, EDUCATION_ORDINAL
+    from ..cognitive_techniques.resume_parser import extract_skills, EDUCATION_LEVELS, EDUCATION_ORDINAL
 
     skills = extract_skills(text)
     exp_match = re.findall(r"(\d{1,2})\+?\s*(?:years?|yrs?)", text, re.IGNORECASE)
