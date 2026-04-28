@@ -50,6 +50,47 @@ def _token_similarity(text_a, text_b):
     return len(tokens_a & tokens_b) / len(tokens_a | tokens_b)
 
 
+def _soft_skill_match(skill_a, skill_b, domain_context=""):
+    """Match soft skills and domain-level concepts with expanded understanding."""
+    skill_a_lower = (skill_a or "").lower()
+    skill_b_lower = (skill_b or "").lower()
+    
+    # Semantic equivalence mapping for soft skills and domains
+    equivalences = {
+        "problem solving": ["analytical thinking", "problem-solving", "critical thinking", "troubleshooting"],
+        "communication": ["oral communication", "written communication", "interpersonal", "stakeholder management"],
+        "leadership": ["team lead", "management", "people management", "team management"],
+        "banking": ["financial services", "financial domain", "treasury", "retail banking", "corporate banking", "investment banking"],
+        "finance": ["financial services", "accounting", "treasury", "investment"],
+        "technical": ["technical skills", "technical expertise", "engineering", "programming"],
+        "data science": ["data analytics", "machine learning", "statistics", "data analysis"],
+        "testing": ["qa", "quality assurance", "test automation", "manual testing"],
+        "project management": ["pm", "agile", "scrum", "waterfall", "prince2"],
+    }
+    
+    # Check direct token overlap first
+    if skill_a_lower == skill_b_lower:
+        return 1.0
+    
+    # Check if they share significant tokens
+    tokens_a = set(skill_a_lower.split())
+    tokens_b = set(skill_b_lower.split())
+    if tokens_a & tokens_b:
+        return 0.75
+    
+    # Check equivalence mappings
+    for canonical, variants in equivalences.items():
+        canonical_match_a = canonical in skill_a_lower
+        canonical_match_b = canonical in skill_b_lower
+        variant_matches_a = any(v in skill_a_lower for v in variants)
+        variant_matches_b = any(v in skill_b_lower for v in variants)
+        
+        if (canonical_match_a or variant_matches_a) and (canonical_match_b or variant_matches_b):
+            return 0.80
+    
+    return 0.0
+
+
 @dataclass
 class JobDescription:
     title: str = ""
@@ -128,7 +169,17 @@ def score_technical_skills(resume, jd):
     # Keyword match
     keyword_score = len(matched) / len(jd_skills_set)
 
-    # SBERT semantic match (lenient 0.65 threshold)
+    # Level 1: Soft skill / domain equivalence matching (lexical)
+    soft_skill_matched = set()
+    for jd_skill in missing:
+        for resume_skill in resume_skills_set:
+            equiv_score = _soft_skill_match(jd_skill, resume_skill)
+            if equiv_score >= 0.75:
+                soft_skill_matched.add(jd_skill)
+                missing.discard(jd_skill)
+                break
+
+    # Level 2: SBERT semantic match (0.60 threshold for broader matching)
     semantic_matched = set()
     if sbert_model and missing and resume_skills_set:
         unmatched_list = list(missing)
@@ -137,11 +188,31 @@ def score_technical_skills(resume, jd):
         res_embs = sbert_model.encode(resume_list)
         for j, jd_emb in enumerate(jd_embs):
             sims = [_cosine_similarity(jd_emb, resume_emb) for resume_emb in res_embs]
-            if sims and max(sims) >= 0.65:
+            if sims and max(sims) >= 0.60:  # Lowered threshold from 0.65 to 0.60
                 semantic_matched.add(unmatched_list[j])
                 missing.discard(unmatched_list[j])
 
-    total_matched = len(matched) + len(semantic_matched)
+    # Level 3: SBERT match against PHRASES from resume's raw_text.
+    # Catches latent skills that the keyword extractor missed — e.g.
+    # 'banking' implied by 'Bank of America', 'communication' implied by
+    # 'communicating with stakeholders'.
+    latent_matched = set()
+    if sbert_model and missing and resume.raw_text:
+        # Sentences/clauses from the raw text
+        phrases = [p.strip() for p in re.split(r"[.\n;:]+", resume.raw_text)
+                   if 8 < len(p.strip()) < 250]
+        if phrases:
+            phrases = phrases[:30]  # cap for efficiency
+            phrase_embs = sbert_model.encode(phrases)
+            still_missing = list(missing)
+            for jd_skill in still_missing:
+                jd_emb = sbert_model.encode([jd_skill])[0]
+                sims = [_cosine_similarity(jd_emb, ph_emb) for ph_emb in phrase_embs]
+                if sims and max(sims) >= 0.55:
+                    latent_matched.add(jd_skill)
+                    missing.discard(jd_skill)
+
+    total_matched = len(matched) + len(soft_skill_matched) + len(semantic_matched) + len(latent_matched)
     combined_score = total_matched / len(jd_skills_set)
 
     # Apriori bonus
@@ -171,14 +242,16 @@ def score_technical_skills(resume, jd):
     final_score = max(0.40, min(1.0, final_score))
 
     explanation = (
-        f"Skills: {len(matched)} keyword + {len(semantic_matched)} semantic "
-        f"/ {len(jd_skills_set)} required. Relevance boost: +{relevance_boost*100:.0f}%, "
+        f"Skills: {len(matched)} keyword + {len(soft_skill_matched)} semantic equiv + "
+        f"{len(semantic_matched)} SBERT + {len(latent_matched)} latent / "
+        f"{len(jd_skills_set)} required. Relevance boost: +{relevance_boost*100:.0f}%, "
         f"Apriori: {len(implied)} implied."
     )
-    if semantic_matched:
-        explanation += f" Semantic: {list(semantic_matched)[:3]}."
+    matched_union = matched | soft_skill_matched | semantic_matched | latent_matched
+    if matched_union:
+        explanation += f" Matched: {list(matched_union)[:5]}."
 
-    return final_score, explanation, sorted(matched | semantic_matched), sorted(missing)
+    return final_score, explanation, sorted(matched_union), sorted(missing)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -445,8 +518,11 @@ def rank_candidates(resumes, jd, custom_weights=None, eligibility_results=None):
             is_eligible=True, eligibility_reason="ELIGIBLE",
             eligibility_trace=eligibility.reasoning_trace if eligibility else "",
             expert_flags=[{
-                "name": f.flag_name, "type": f.flag_type,
-                "modifier": f.score_modifier, "reason": f.reason,
+                "name": f.flag_name,
+                "value": f.flag_value,  # T/F per the 6-flag spec
+                "type": f.flag_type,
+                "modifier": f.score_modifier,
+                "reason": f.reason,
             } for f in flag_result.flags],
             flags_trace=flag_result.reasoning_trace,
             ga_category=ga_category, ga_weights=weights,

@@ -9,11 +9,11 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 import json
 
-from .decision_automation.eligibility_engine import check_eligibility
-from .jd_processing.jd_parsing import parse_job_description
-from .resume_processing.resume_parser import parse_resume
-from .scoring_ranking_engine.scoring_engine import CandidateRanking, get_sbert_model, rank_candidates
-from .business_optimization.ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
+from .backend.decision_automation.eligibility_engine import check_eligibility
+from .backend.jd_processing.jd_parsing import parse_job_description
+from .backend.resume_processing.resume_parser import parse_resume
+from .backend.scoring_ranking_engine.scoring_engine import CandidateRanking, get_sbert_model, rank_candidates
+from .backend.business_optimization.ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
 
 app = FastAPI(
     title="S-Rank ICRS API",
@@ -42,7 +42,7 @@ async def health_check():
 
 @app.post("/api/rank")
 async def rank_resumes(
-    job_title: str = Form("Software Engineer"),
+    job_title: str = Form(""),
     job_description: str = Form(...),
     resumes: list[UploadFile] = File(...),
     weights: Optional[str] = Form(None),
@@ -60,7 +60,7 @@ async def rank_resumes(
         parsed_resumes = []
         for resume_file in resumes:
             file_bytes = await resume_file.read()
-            parsed = parse_resume(file_bytes, resume_file.filename)
+            parsed = parse_resume(file_bytes, resume_file.filename or "resume")
             parsed_resumes.append(parsed)
 
         if not parsed_resumes:
@@ -190,7 +190,7 @@ async def rank_resumes(
 async def parse_single_resume(resume: UploadFile = File(...)):
     try:
         file_bytes = await resume.read()
-        parsed = parse_resume(file_bytes, resume.filename)
+        parsed = parse_resume(file_bytes, resume.filename or "resume")
         return {
             "success": True,
             "data": {

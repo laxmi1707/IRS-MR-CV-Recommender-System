@@ -66,7 +66,7 @@ TECH_SKILLS_DB = [
     # Frameworks
     "react", "angular", "vue", "django", "flask", "fastapi", "spring",
     "node.js", "express", "next.js", "tensorflow", "pytorch", "keras",
-    "scikit-learn", "pandas", "numpy", "spark", "hadoop", "airflow",
+    "scikit-learn", "pandas", "numpy", "spark", "hadoop", "airflow", "TestNG", "junit", "BDD", "cucumber","selenium",
     # Databases
     "sql", "mysql", "postgresql", "mongodb", "redis", "elasticsearch",
     "dynamodb", "cassandra", "neo4j", "oracle",
@@ -83,9 +83,9 @@ TECH_SKILLS_DB = [
     "power bi", "tableau", "looker", "data visualization",
     "statistics", "a/b testing", "hypothesis testing",
     # Other
-    "agile", "scrum", "jira", "rest api", "graphql", "microservices",
+    "agile", "waterfall" "scrum", "jira", "rest api", "graphql", "microservices",
     "system design", "oop", "design patterns", "html", "css",
-    "banking", "finance", "healthcare", "e-commerce", "cybersecurity", "blockchain"
+    "banking", "finance", "healthcare", "e-commerce", "cybersecurity", "blockchain","kanban","scrum master", "communication","problem solving",
     
 ]
 
@@ -95,7 +95,7 @@ EDUCATION_LEVELS = {
     "ph.d": "PhD",
     "doctorate": "PhD",
     "doctor of": "PhD",
-    "master": "Masters",
+    "masters of": "Masters",
     "mtech": "Masters",
     "m.tech": "Masters",
     "msc": "Masters",
@@ -113,7 +113,9 @@ EDUCATION_LEVELS = {
     "associate": "Diploma",
     "certificate": "Certificate",
     "high school": "HighSchool",
+    "HSC": "HighSchool",
     "secondary": "HighSchool",
+    "SSC": "HighSchool",
 }
 
 EDUCATION_ORDINAL = {
@@ -121,24 +123,48 @@ EDUCATION_ORDINAL = {
     "Masters": 4,
     "Bachelors": 3,
     "Diploma": 2,
-    "Certificate": 1,
-    "HighSchool": 0,
+    "HighSchool": 1,
     "Unknown": 0,
 }
 
 # ─── Job Title Patterns ───────────────────────────────────────
 JOB_TITLE_PATTERNS = [
-    r"(?i)(?:senior|junior|lead|principal|staff|chief)?\s*(?:software|data|ml|ai|devops|cloud|full\s*stack|front\s*end|back\s*end|mobile)\s*(?:engineer|developer|architect|scientist|analyst)",
+    # ─── Tech / Engineering ───
+    r"(?i)(?:senior|junior|lead|principal|staff|chief)?\s*(?:software|data|ml|ai|devops|cloud|full\s*stack|front\s*end|back\s*end|mobile|systems?|security|network)\s*(?:engineer|developer|architect|scientist|analyst|administrator)",
     r"(?i)(?:senior|junior|lead|principal)?\s*(?:product|project|program|engineering)\s*manager",
-    r"(?i)(?:senior|junior)?\s*(?:business|data|systems?|research)\s*analyst",
-    r"(?i)(?:cto|ceo|coo|vp|director|head)\s+(?:of\s+)?(?:engineering|technology|data|product)",
-    r"(?i)(?:technical|team|engineering)\s*lead",
-    r"(?i)(?:solutions?|enterprise|technical)\s*architect",
+    r"(?i)(?:senior|junior)?\s*(?:business|data|systems?|research|financial|qa|test)\s*analyst",
+    r"(?i)(?:cto|ceo|coo|cfo|vp|director|head)\s+(?:of\s+)?(?:engineering|technology|data|product|operations|sales)",
+    r"(?i)(?:technical|team|engineering|tech)\s*lead",
+    r"(?i)(?:solutions?|enterprise|technical|cloud|security|data)\s*architect",
     r"(?i)data\s*(?:engineer|scientist|analyst)",
     r"(?i)machine\s*learning\s*engineer",
     r"(?i)research\s*(?:engineer|scientist)",
-    r"(?i)consultant",
-    r"(?i)intern",
+    r"(?i)\b(?:consultant|intern|trainee|associate|specialist)\b",
+    # ─── QA / Testing ───
+    r"(?i)(?:senior|junior|lead|principal)?\s*(?:test|qa|quality\s*assurance)\s*(?:lead|manager|engineer|analyst|architect|automation)",
+    r"(?i)(?:senior|junior|lead)?\s*(?:automation|sdet|performance)\s*(?:engineer|tester|analyst)",
+    r"(?i)test\s*architect",
+    r"(?i)uat\s*(?:test\s*)?(?:manager|lead|analyst)",
+    # ─── Generic management ───
+    r"(?i)(?:senior|junior|lead|head)?\s*(?:program|project|product|account|operations)\s*manager",
+    # ─── Non-tech professions (CRITICAL for eligibility detection) ───
+    r"(?i)(?:yoga|fitness|pilates|zumba|aerobics|reformer)\s*(?:teacher|instructor|trainer|coach)",
+    r"(?i)(?:personal|gym|sports|athletic)\s*trainer",
+    r"(?i)(?:executive|head|sous|pastry|line|station)\s*chef",
+    r"(?i)\b(?:chef|cook|baker|sommelier)\b",
+    r"(?i)\b(?:cashier|waiter|waitress|bartender|barista|hostess?|server)\b",
+    r"(?i)(?:hairdresser|hair\s*stylist|barber|beautician|cosmetologist|makeup\s*artist|esthetician|nail\s*technician)",
+    r"(?i)(?:plumber|electrician|carpenter|welder|mason|painter|roofer|locksmith|machinist)",
+    r"(?i)(?:gardener|florist|landscaper|farmer|farmhand)",
+    r"(?i)(?:truck|cab|taxi|delivery|bus|chauffeur)\s*driver",
+    r"(?i)(?:security\s*guard|bouncer|doorman|watchman)",
+    r"(?i)\b(?:nurse|nursing|caregiver|midwife|paramedic|medic|doctor|surgeon|dentist|veterinarian|pharmacist)\b",
+    r"(?i)(?:physical|occupational|speech)\s*therapist",
+    r"(?i)group\s*fitness\s*(?:instructor|trainer)",
+    r"(?i)(?:retail|store|shop)\s*(?:associate|clerk|assistant)",
+    r"(?i)(?:teacher|tutor|professor|lecturer|educator|instructor)",  # education roles
+    r"(?i)(?:lawyer|attorney|paralegal|legal\s*assistant|advocate|barrister|solicitor)",
+    r"(?i)(?:journalist|reporter|editor|copywriter|content\s*writer)",
 ]
 
 
@@ -207,18 +233,87 @@ def extract_phone(text: str) -> str:
 
 
 def extract_skills(text: str) -> list[str]:
-    """Match known technical skills against resume text."""
+    """Match known skills against resume text.
+
+    Uses three strategies (in priority order):
+      1. Literal word-boundary match of skill in text.
+      2. Substring match for multi-word skills.
+      3. Domain-inference rules — captures abstract/soft skills that rarely
+         appear as literal terms in resumes. Examples:
+           - 'banking' inferred from 'Bank of America', 'BNP Paribas', 'JPMorgan'
+           - 'communication' inferred from 'communicating effectively with stakeholders'
+           - 'problem solving' inferred from 'analytical', 'troubleshooting'
+
+    The third strategy is critical because resumes rarely contain literal
+    terms like 'banking' or 'communication' — those are expressed indirectly.
+    """
     text_lower = text.lower()
-    found_skills = []
+    found_skills = set()
+
+    # Strategy 1 + 2: literal and word-boundary matches
     for skill in TECH_SKILLS_DB:
-        # Use word boundary matching for short skills to avoid false positives
-        if len(skill) <= 3:
-            if re.search(r"\b" + re.escape(skill) + r"\b", text_lower):
-                found_skills.append(skill)
+        skill_l = skill.lower()
+        if len(skill_l) <= 3:
+            if re.search(r"\b" + re.escape(skill_l) + r"\b", text_lower):
+                found_skills.add(skill_l)
         else:
-            if skill in text_lower:
-                found_skills.append(skill)
-    return list(set(found_skills))
+            if skill_l in text_lower:
+                found_skills.add(skill_l)
+
+    # Strategy 3: domain-inference — credit a skill if its concept is
+    # strongly implied even when the literal word isn't present.
+    SKILL_INFERENCE_RULES = {
+        "banking": [
+            r"(?i)\b(?:bank\s+of\s+\w+|banking|jpmorgan|hsbc|citibank|"
+            r"standard\s+chartered|deutsche\s+bank|barclays|bnp\s+paribas|"
+            r"credit\s+agricole|abn\s+amro|goldman\s+sachs|morgan\s+stanley|"
+            r"wells\s+fargo|state\s+street|swift\s+messag|trade\s+process|"
+            r"forex|foreign\s+exchange|securities|bond\s+asset|bfsi|"
+            r"capital\s+market|investment\s+bank)\b"
+        ],
+        "communication": [
+            r"(?i)\b(?:communicat|stakeholder|presentation|reporting|liais|"
+            r"correspond|interpersonal|verbal\s+and\s+written|cross[-\s]functional)",
+        ],
+        "problem solving": [
+            r"(?i)\b(?:problem[-\s]solv|analytical|troubleshoot|root[-\s]cause|"
+            r"debugg|critical[-\s]think|investigat|diagnos)",
+        ],
+        "leadership": [
+            r"(?i)\b(?:leader|managed|mentored|coached|led\s+(?:a|the|team)|"
+            r"team\s+lead|head\s+of|directed)",
+        ],
+        "agile": [
+            r"(?i)\b(?:agile|scrum|sprint|kanban|standup|retrospective|"
+            r"product\s+owner|backlog\s+groom)",
+        ],
+        "test management": [
+            r"(?i)\b(?:test\s+(?:management|strategy|plan|estimate|architect)|"
+            r"qa\s+lead|test\s+lead|defect\s+manage|sign[-\s]off)",
+        ],
+        "uat": [
+            r"(?i)\buat\b|user\s+acceptance\s+test",
+        ],
+        "automation": [
+            r"(?i)\b(?:automat|cucumber|webdriver|rest[-\s]assured|playwright)",
+        ],
+        "finance": [
+            r"(?i)\b(?:finance|financial|treasury|accounting|audit|fund\s+management|"
+            r"asset\s+management|portfolio|hedge\s+fund)",
+        ],
+        "stakeholder management": [
+            r"(?i)\b(?:stakeholder|client\s+management|business\s+user|liaison)",
+        ],
+    }
+    for skill, patterns in SKILL_INFERENCE_RULES.items():
+        if skill in found_skills:
+            continue
+        for pat in patterns:
+            if re.search(pat, text):
+                found_skills.add(skill)
+                break
+
+    return list(found_skills)
 
 
 def extract_experience_years(text: str) -> float:
