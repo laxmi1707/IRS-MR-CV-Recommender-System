@@ -316,56 +316,177 @@ def extract_skills(text: str) -> list[str]:
     return list(found_skills)
 
 
-def extract_experience_years(text: str) -> float:
+def _is_education_context(text: str, match_start: int, match_end: int) -> bool:
+    """Check if a date range is sitting within a degree/diploma line.
+
+    Strategy: look at the line containing the match. If that line (or the
+    line immediately before it) contains a degree keyword, the date range
+    is most likely a degree timeline rather than work experience.
+
+    Word boundaries are essential — 'mba' must NOT match inside 'mumbai',
+    'bsc' must NOT match inside other words, etc.
+    """
+    EDU_LINE_KEYWORDS = [
+        # Degree names (the strongest signal — usually on the same line as the dates)
+        "bachelor", "bachelors", "master", "masters", "phd", "doctorate", "doctoral",
+        "diploma", "mba", "btech", "mtech", "bsc", "msc",
+        "b\\.tech", "m\\.tech", "b\\.sc", "m\\.sc", "b\\.e\\.", "m\\.e\\.",
+        # Institution words
+        "university", "college", "academy",
+        # Degree program markers
+        "graduated", "thesis", "dissertation",
+    ]
+    # Phrases (handled separately — these are multi-word so word boundary
+    # at the spaces in the middle would be wrong)
+    EDU_LINE_PHRASES = ["institute of", "school of"]
+
+    # Build a single word-boundary regex
+    edu_pattern = r"\b(?:" + "|".join(EDU_LINE_KEYWORDS) + r")\b"
+
+    # Find the line containing this match
+    line_start = text.rfind("\n", 0, match_start) + 1
+    line_end = text.find("\n", match_end)
+    if line_end == -1:
+        line_end = len(text)
+    line = text[line_start:line_end].lower()
+
+    # Check the same line first
+    if re.search(edu_pattern, line, re.IGNORECASE):
+        return True
+    if any(p in line for p in EDU_LINE_PHRASES):
+        return True
+
+    # Also check the line immediately before — sometimes 'EDUCATION' header
+    # sits on its own line and the degree+date is on the next line.
+    if line_start > 0:
+        prev_line_end = line_start - 1  # the newline char
+        prev_line_start = text.rfind("\n", 0, prev_line_end) + 1
+        prev_line = text[prev_line_start:prev_line_end].lower()
+        if re.search(edu_pattern, prev_line, re.IGNORECASE):
+            return True
+        if any(p in prev_line for p in EDU_LINE_PHRASES):
+            return True
+        # Also check for the bare EDUCATION header
+        if "education" in prev_line and len(prev_line.strip()) <= 30:
+            return True
+
+    return False
+
+
+def extract_experience_years(text: str, experience_section: str = None) -> float:
     """Estimate total years of experience from text patterns.
 
-    Three strategies, in priority order:
-      1. Explicit statement like "11 years of experience"
-      2. Date ranges with month names: "Aug 2023 - Ongoing", "Jun-2018 - Jan-2020"
-      3. Plain year ranges: "2019 - 2023"
+    Strategies in priority order:
+      1. Explicit statement like "11 years of experience" (most reliable).
+         Handles spacing variants: "11years", "11 yrs", "11+ years", etc.
+      2. Month + year ranges within the experience section: "Aug 2023 - Ongoing",
+         "Jun-2018 - Jan-2020". De-duplicates overlapping ranges.
+      3. Plain year ranges as last-resort fallback (e.g. "2019 - 2023") —
+         applied ONLY to the experience section so we don't count degree dates
+         like "Bachelor of Engineering 2010 - 2014".
+
+    Two layers of education-date protection:
+      - The caller passes only the experience section in `experience_section`
+        when it can.
+      - Even within that section, date ranges in an education-context window
+        (degree keywords nearby) are skipped — handles cases where section
+        detection failed.
+
+    Args:
+        text: Full resume text.
+        experience_section: If provided, Pattern 2 and 3 use this instead of `text`
+            so we don't sum work years with education years.
     """
     # ─── Pattern 1: explicit "X years of experience" ──────
-    matches = re.findall(
-        r"(\d{1,2})\+?\s*(?:years?|yrs?)\s*(?:of\s+)?(?:experience|exp)",
-        text, re.IGNORECASE,
+    # More permissive — handle "11years" (no space), "11+ years", "11 yrs of exp"
+    pattern1 = (
+        r"(\d{1,2})\+?\s*(?:years?|yrs?)"          # number + unit
+        r"\s*(?:of\s+)?"                             # optional "of"
+        r"(?:experience|exp\b|industry|professional|relevant)"  # context word
     )
+    matches = re.findall(pattern1, text, re.IGNORECASE)
     if matches:
-        return min(40.0, max(float(m) for m in matches))
+        # Take the MAX explicit claim — handles "10+ years experience in ML, 5 years in NLP"
+        years = [float(m) for m in matches if 0 < float(m) <= 50]
+        if years:
+            return min(40.0, max(years))
+
+    # Also try "X+ years" alone if it's right at the top of the resume (header summary)
+    header = text[:500]
+    summary_match = re.search(r"(\d{1,2})\+\s*(?:years?|yrs?)\b", header, re.IGNORECASE)
+    if summary_match:
+        years = float(summary_match.group(1))
+        if 0 < years <= 50:
+            return min(40.0, years)
+
+    # ─── Restrict patterns 2 and 3 to the experience section ──
+    # If no experience section was passed, use full text (less accurate but workable).
+    search_text = experience_section if experience_section else text
 
     # ─── Pattern 2: month + year ranges ───────────────────
-    # Catches "Aug 2023 - Ongoing", "Jun-2018 - Jan-2020", "Jan 2020 – Jun 2021"
-    # Months can be abbreviated; separator can be space or hyphen
     MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
     range_re = re.compile(
         rf"{MONTH}[\s\-]*?(\d{{4}})\s*[-–—]\s*"
         rf"(?:{MONTH}[\s\-]*?(\d{{4}})|(Present|Ongoing|Current|Now))",
         re.IGNORECASE,
     )
-    total_months = 0
-    for m in range_re.finditer(text):
+    ranges = []
+    for m in range_re.finditer(search_text):
+        # Skip if this date range is in an education-context window
+        if _is_education_context(search_text, m.start(), m.end()):
+            continue
         start_year = int(m.group(1))
         if m.group(2):
             end_year = int(m.group(2))
         else:
             end_year = 2026  # Present/Ongoing
         if 1990 <= start_year <= 2030 and end_year >= start_year:
-            total_months += max(0, (end_year - start_year) * 12)
+            ranges.append((start_year, end_year))
 
-    if total_months > 0:
-        return min(40.0, total_months / 12.0)
+    if ranges:
+        # De-overlap: merge overlapping/contiguous ranges before summing
+        ranges.sort()
+        merged = [ranges[0]]
+        for s, e in ranges[1:]:
+            ls, le = merged[-1]
+            if s <= le:  # overlap or contiguous
+                merged[-1] = (ls, max(le, e))
+            else:
+                merged.append((s, e))
+        total = sum(e - s for s, e in merged)
+        if total > 0:
+            return min(40.0, float(total))
 
-    # ─── Pattern 3: plain "YYYY - YYYY" ───────────────────
-    plain_ranges = re.findall(
+    # ─── Pattern 3: plain "YYYY - YYYY" (last resort) ─────
+    plain_re = re.compile(
         r"(20\d{2})\s*[-–—]\s*(20\d{2}|present|current|ongoing)",
-        text, re.IGNORECASE,
+        re.IGNORECASE,
     )
-    total = 0
-    for start, end in plain_ranges:
-        start_y = int(start)
-        end_y = 2026 if end.lower() in ("present", "current", "ongoing") else int(end)
-        total += max(0, end_y - start_y)
+    pr = []
+    for m in plain_re.finditer(search_text):
+        # Skip if this date range is in an education-context window
+        if _is_education_context(search_text, m.start(), m.end()):
+            continue
+        start_y = int(m.group(1))
+        end_str = m.group(2)
+        end_y = 2026 if end_str.lower() in ("present", "current", "ongoing") else int(end_str)
+        if start_y < end_y:
+            pr.append((start_y, end_y))
 
-    return min(40.0, float(total))
+    if pr:
+        # De-overlap
+        pr.sort()
+        merged = [pr[0]]
+        for s, e in pr[1:]:
+            ls, le = merged[-1]
+            if s <= le:
+                merged[-1] = (ls, max(le, e))
+            else:
+                merged.append((s, e))
+        total = sum(e - s for s, e in merged)
+        return min(40.0, float(total))
+
+    return 0.0
 
 
 def extract_education_level(text: str) -> str:
@@ -555,13 +676,29 @@ def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
         # No education section — fall back to full text but with the strict matcher
         education_level = extract_education_level(raw_text)
 
+    # Build the experience-search text. Strip education content out of it so
+    # date ranges like "Bachelor of Engineering Jun 2010 – Jul 2014" never
+    # get counted as work experience. We pass this stripped text as the
+    # experience_section argument to extract_experience_years.
+    if experience_text and education_text:
+        # Use the dedicated experience section, minus any education text
+        # that may have leaked into it (defensive double-strip).
+        clean_experience_text = experience_text.replace(education_text, "")
+    elif experience_text:
+        clean_experience_text = experience_text
+    elif education_text:
+        # No experience section detected — fall back to raw_text minus education
+        clean_experience_text = raw_text.replace(education_text, "")
+    else:
+        clean_experience_text = raw_text
+
     resume = ParsedResume(
         raw_text=raw_text,
         name=name[:100],
         email=extract_email(raw_text),
         phone=extract_phone(raw_text),
         skills=extract_skills(skills_text),
-        experience_years=extract_experience_years(raw_text),
+        experience_years=extract_experience_years(raw_text, clean_experience_text),
         experience_text=experience_text[:2000],
         education_level=education_level,
         education_text=education_text[:1000],
