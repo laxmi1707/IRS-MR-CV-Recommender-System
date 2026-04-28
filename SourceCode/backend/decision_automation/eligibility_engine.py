@@ -37,40 +37,201 @@ class EligibilityResult:
 
 # Truly unrelated professions — strong filter signals only
 UNRELATED_PROFESSION_KEYWORDS = [
+    # Fitness / wellness
     "yoga instructor", "yoga teacher", "fitness trainer", "personal trainer",
-    "chef", "sous chef", "head chef", "pastry chef",
-    "hairdresser", "beautician", "cosmetologist", "makeup artist",
-    "plumber", "electrician", "carpenter", "welder", "mason",
-    "gardener", "florist", "landscaper",
-    "truck driver", "cab driver", "delivery driver",
-    "security guard", "bouncer",
-    "waiter", "waitress", "bartender",
+    "pilates instructor", "pilates trainer", "pilates teacher",
+    "group fitness instructor", "aerobics instructor",
+    # Culinary
+    "chef", "sous chef", "head chef", "pastry chef", "executive chef", "cook",
+    # Beauty / personal care
+    "hairdresser", "barber", "beautician", "cosmetologist", "makeup artist",
+    "nail technician", "esthetician",
+    # Trades
+    "plumber", "electrician", "carpenter", "welder", "mason", "painter",
+    "roofer", "locksmith", "machinist",
+    # Outdoor / agriculture
+    "gardener", "florist", "landscaper", "farmer",
+    # Driving
+    "truck driver", "cab driver", "delivery driver", "taxi driver", "bus driver",
+    # Service
+    "security guard", "bouncer", "doorman",
+    "waiter", "waitress", "bartender", "barista", "cashier",
+    # Healthcare (separate field)
+    "nurse", "midwife", "paramedic", "caregiver", "physical therapist",
+    # Other
+    "teacher", "tutor",  # academic teaching is its own field
+]
+
+# Domain categories for profession relevance checking
+PROFESSIONAL_DOMAINS = {
+    "tech": ["software", "developer", "engineer", "programmer", "devops", "qa", "testing", "analyst"],
+    "finance": ["finance", "accounting", "accountant", "auditor", "financial", "bank", "banking", "treasury", "investment"],
+    "management": ["manager", "director", "lead", "coordinator", "supervisor", "head", "executive"],
+    "sales": ["sales", "business development", "account executive", "representative"],
+    "hr": ["hr", "human resources", "recruiter", "recruitment", "talent"],
+    "marketing": ["marketing", "brand", "product", "growth", "digital"],
+    "operations": ["operations", "supply chain", "logistics", "production"],
+    "uat": ["uat", "testing", "quality", "qa", "test manager"],
+}
+
+
+def _kw_match(keyword: str, text: str) -> bool:
+    """Word-boundary match — avoids 'cook' matching 'cookies'."""
+    return bool(re.search(r"\b" + re.escape(keyword) + r"\b", text))
+
+
+# Tech-context keywords that signal a tech resume.
+# If 5+ appear, we raise the threshold for unrelated-profession matches in body text.
+TECH_CONTEXT_HINTS = [
+    "software", "engineer", "developer", "java", "python", "javascript",
+    "kubernetes", "docker", "aws", "azure", "api", "microservice", "devops",
+    "ci/cd", "agile", "scrum", "git", "sql", "machine learning", "data science",
+    "architect", "framework", "deployment", "cloud", "backend", "frontend",
+    "selenium", "cucumber", "automation", "qa", "test",
 ]
 
 
-def _check_unrelated_profession(resume: ParsedResume, jd_text: str):
-    """Only flag if resume is from clearly unrelated profession."""
+def _semantic_profession_match(resume: ParsedResume, jd_title: str, jd_text: str,
+                                sbert_model) -> tuple[bool, float, str]:
+    """Use SBERT to compare candidate's profession with JD's profession.
+
+    Returns (is_aligned, similarity, explanation).
+
+    This is the robust way to detect unrelated professions — works even if
+    the candidate's job title isn't in our keyword list (e.g. 'painter' for
+    a software engineer JD). We compute a similarity between:
+      - candidate's job_titles (joined) and the JD title + first sentence
+      - if similarity < 0.30 AND no skill overlap, candidate is unrelated
+    """
+    if sbert_model is None:
+        return True, 1.0, "SBERT unavailable, skipped semantic check"
+
+    cand_profile = " ".join(resume.job_titles[:5]) if resume.job_titles else ""
+    if not cand_profile:
+        # Fall back to first 200 chars of resume — usually contains role context
+        cand_profile = resume.raw_text[:200]
+
+    # JD profile: title + first sentence of description for context
+    jd_first = jd_text.split(".")[0] if jd_text else ""
+    jd_profile = (jd_title or "") + ". " + jd_first
+
+    if not jd_profile.strip() or not cand_profile.strip():
+        return True, 1.0, "Insufficient data for semantic check"
+
+    try:
+        import numpy as np
+        cand_emb = sbert_model.encode(cand_profile)
+        jd_emb = sbert_model.encode(jd_profile)
+        sim = float(np.dot(cand_emb, jd_emb) / (
+            np.linalg.norm(cand_emb) * np.linalg.norm(jd_emb) + 1e-8))
+        return sim >= 0.30, sim, f"Profession similarity={sim:.2f}"
+    except Exception as e:
+        return True, 1.0, f"Semantic check error: {e}"
+
+
+def _check_unrelated_profession(resume: ParsedResume, jd_title: str, jd_text: str,
+                                 jd_skills: list, sbert_model=None):
+    """Determine if candidate's profession is fundamentally unrelated to the JD.
+
+    Three-pass approach:
+      1. KEYWORD pass — if candidate's job_titles explicitly contain a known
+         non-tech keyword (yoga, chef, plumber, painter, etc.) AND the JD is
+         NOT for that domain, mark NA. Strongest, most reliable signal.
+      2. SBERT SEMANTIC pass — compare candidate's profession to JD's profession
+         via cosine similarity. If similarity is very low (< 0.30) AND candidate
+         has zero skill overlap with the JD, mark NA. This catches unseen
+         professions (painter, cobbler, etc.) without requiring a keyword list.
+      3. JD-SIDE keyword pass — if JD is for an unrelated profession (e.g.
+         'Yoga Reformer Trainer' or 'Chef'), and the candidate's titles do NOT
+         contain that profession's keyword, mark NA.
+
+    Returns (is_unrelated: bool, matched_keywords: list, reason: str).
+    """
     resume_text_lower = resume.raw_text.lower()
     resume_titles_lower = " ".join(resume.job_titles).lower()
-    jd_lower = jd_text.lower()
+    jd_lower = (jd_title + " " + jd_text).lower()
 
-    # If JD itself is for one of these domains, don't filter
-    if any(kw in jd_lower for kw in UNRELATED_PROFESSION_KEYWORDS):
-        return False, []
+    # ─── Pass 1: Direct keyword match in titles ─────────────
+    # Check if candidate's titles have a non-tech keyword
+    cand_unrelated_kws = [kw for kw in UNRELATED_PROFESSION_KEYWORDS
+                          if _kw_match(kw, resume_titles_lower)]
 
-    # Check job titles — strongest signal
-    matched_in_titles = [kw for kw in UNRELATED_PROFESSION_KEYWORDS
-                         if kw in resume_titles_lower]
-    if matched_in_titles:
-        return True, matched_in_titles
+    # Check if JD is itself for one of these domains
+    jd_unrelated_kws = [kw for kw in UNRELATED_PROFESSION_KEYWORDS
+                        if _kw_match(kw, jd_lower)]
 
-    # Body text needs 3+ hits to avoid false positives
-    matched_in_text = [kw for kw in UNRELATED_PROFESSION_KEYWORDS
-                       if kw in resume_text_lower]
-    if len(matched_in_text) >= 3:
-        return True, matched_in_text
+    if cand_unrelated_kws:
+        # Candidate is from a non-tech profession.
+        # Define profession families (single-word anchors that appear in JDs).
+        FAMILY_ANCHORS = [
+            {"yoga", "fitness", "pilates", "personal trainer", "trainer", "instructor", "aerobics", "zumba"},  # fitness
+            {"chef", "cook", "culinary", "kitchen", "baker", "pastry", "sous"},  # culinary
+            {"hairdresser", "beautician", "cosmetologist", "barber", "salon", "spa"},  # beauty
+            {"plumber", "electrician", "carpenter", "welder", "mason", "painter", "construction"},  # trades
+            {"truck driver", "cab driver", "delivery driver", "driver", "chauffeur"},  # driving
+            {"waiter", "waitress", "bartender", "barista", "server"},  # restaurant service
+            {"nurse", "midwife", "paramedic", "caregiver", "physical therapist"},  # healthcare
+        ]
 
-    return False, []
+        cand_blob = resume_titles_lower + " " + resume_text_lower[:500]
+        jd_blob = jd_lower
+
+        # Find which family the candidate is in
+        cand_fam_idx = None
+        for i, fam in enumerate(FAMILY_ANCHORS):
+            if any(_kw_match(kw, cand_blob) for kw in fam):
+                cand_fam_idx = i
+                break
+
+        # Find which family the JD targets
+        jd_fam_idx = None
+        for i, fam in enumerate(FAMILY_ANCHORS):
+            if any(_kw_match(kw, jd_blob) for kw in fam):
+                jd_fam_idx = i
+                break
+
+        if cand_fam_idx is not None and cand_fam_idx == jd_fam_idx:
+            # Both in same family → eligible (yoga teacher → pilates trainer)
+            return False, [], "Candidate and JD share profession family"
+        elif jd_fam_idx is not None:
+            # JD is for a specialty profession but candidate is in a different family → NA
+            return True, cand_unrelated_kws, \
+                f"Candidate is from a different profession family than the JD ({cand_unrelated_kws[0]})"
+        else:
+            # JD is generic/tech, candidate is yoga teacher → NA
+            return True, cand_unrelated_kws, \
+                f"Candidate is from unrelated profession ({cand_unrelated_kws[0]})"
+
+    # ─── Pass 2: JD-side check ──────────────────────────────
+    # If JD is for a specialty profession (e.g. Pilates Trainer) but candidate
+    # has no matching keyword in titles, they're NA.
+    if jd_unrelated_kws:
+        # Tech engineer applying for chef job — should be NA
+        return True, [], \
+            f"JD requires specialty profession ({jd_unrelated_kws[0]}); candidate's profile does not match"
+
+    # ─── Pass 3: SBERT semantic profession check ────────────
+    # Catches unseen professions not in our keyword list (e.g. 'cobbler').
+    aligned, sim, sem_msg = _semantic_profession_match(resume, jd_title, jd_text, sbert_model)
+    if not aligned:
+        # Verify no skill overlap before declaring NA — semantic alone is risky
+        resume_skills_set = set(s.lower() for s in resume.skills)
+        jd_skills_set = set(s.lower() for s in jd_skills)
+        skill_overlap = len(resume_skills_set & jd_skills_set)
+        if skill_overlap == 0:
+            return True, [], f"Low semantic similarity ({sim:.2f}) and zero skill overlap"
+
+    # ─── Body-text fallback (existing logic, preserved) ─────
+    # Even if titles weren't extracted, scan body for unrelated-profession keywords
+    tech_hits = sum(1 for hint in TECH_CONTEXT_HINTS if _kw_match(hint, resume_text_lower))
+    is_tech_resume = tech_hits >= 5
+    body_matches = [kw for kw in UNRELATED_PROFESSION_KEYWORDS
+                    if _kw_match(kw, resume_text_lower)]
+    threshold = 5 if is_tech_resume else 3
+    if len(body_matches) >= threshold:
+        return True, body_matches, f"Body text contains {len(body_matches)} unrelated-profession keywords"
+
+    return False, [], "Profession appears compatible with JD"
 
 
 def check_eligibility(
@@ -92,20 +253,23 @@ def check_eligibility(
     jd_skills_lower = set(s.lower() for s in jd_required_skills)
 
     # ─── Rule 1: Unrelated Profession ─────────────────────────
-    is_unrelated, matched_kw = _check_unrelated_profession(resume, jd_text)
+    is_unrelated, matched_kw, prof_reason = _check_unrelated_profession(
+        resume, jd_title, jd_text, jd_required_skills, sbert_model=sbert_model
+    )
     if is_unrelated:
+        kw_str = ', '.join(matched_kw[:3]) if matched_kw else prof_reason
         rules_fired.append(RuleFiring(
             rule_name="UnrelatedProfessionRule",
-            condition=f"Unrelated profession indicators: {matched_kw[:3]}",
+            condition=prof_reason,
             result="FAIL",
-            details=f"Resume from clearly unrelated profession: {', '.join(matched_kw[:5])}.",
+            details=f"Resume from unrelated profession. {prof_reason}",
         ))
         is_eligible = False
-        fail_reason = f"Unrelated profession ({', '.join(matched_kw[:2])})"
+        fail_reason = f"Unrelated profession ({kw_str})"
     else:
         rules_fired.append(RuleFiring(
             rule_name="UnrelatedProfessionRule",
-            condition="No unrelated profession keywords",
+            condition=prof_reason,
             result="PASS",
             details="Candidate's professional background is compatible.",
         ))

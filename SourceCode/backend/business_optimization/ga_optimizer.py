@@ -4,7 +4,7 @@ Offline Calibration via DEAP-style GA
 
 Chromosome: [w_skills, w_experience, w_education, w_availability, w_misc]
 Fitness: Kendall Tau rank correlation
-Selection: Tournament (k=3), Crossover: BLX-α (0.5), Mutation: Gaussian (σ=0.1)
+Selection: Tournament (k=5), Crossover: BLX-α (0.5), Mutation: Gaussian (σ=0.1)
 Termination: 50 generations + early stop (10 stall)
 """
 

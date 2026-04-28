@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>S-Rank ICRS — Intelligent Candidate Ranking System</title>
+<title>ICRS — Intelligent Candidate Ranking System</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Serif+Display&display=swap');
 
@@ -104,10 +104,10 @@
     align-items: center; justify-content: center; color: white;
     font-weight: 700; font-size: 18px; font-family: 'DM Serif Display', serif;
   }
-  .rank-1 { background: #FFD700; }
-  .rank-2 { background: #C0C0C0; }
-  .rank-3 { background: #CD7F32; }
-  .rank-other { background: var(--navy); }
+  .rank-badge.rank-1 { background: #FFD700; }
+  .rank-badge.rank-2 { background: #C0C0C0; }
+  .rank-badge.rank-3 { background: #CD7F32; }
+  .rank-badge.rank-other { background: var(--navy); }
 
   .card-info { flex: 1; }
   .card-name { font-weight: 700; font-size: 17px; color: var(--navy); font-family: 'DM Serif Display', serif; }
@@ -154,8 +154,49 @@
   .dim-explanation { margin-top: 8px; font-size: 12px; color: #666; line-height: 1.5; }
   .dim-explanation strong { color: var(--navy); font-weight: 600; }
 
-  /* Radar chart */
-  .radar-container { display: flex; justify-content: center; margin: 10px 0; }
+  /* KB Expert Flags panel — replaces the old radar chart */
+  .kb-flags-panel {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .kb-flags-header {
+    background: var(--navy);
+    color: white;
+    padding: 11px 14px;
+    font-family: 'DM Serif Display', serif;
+    font-size: 14px;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 0.3px;
+  }
+  .kb-flags-body {
+    padding: 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .kb-flag-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .kb-flag-icon {
+    flex: 0 0 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; line-height: 1;
+  }
+  .kb-flag-name { flex: 1; font-weight: 500; }
+  .kb-flag-value-true { color: #16a34a; font-weight: 700; font-size: 11px;
+                         padding: 2px 6px; background: #dcfce7; border-radius: 4px; }
+  .kb-flag-value-false { color: #991b1b; font-weight: 700; font-size: 11px;
+                          padding: 2px 6px; background: #fee2e2; border-radius: 4px; }
+  .kb-flag-value-neutral { color: #6b7280; font-weight: 600; font-size: 11px;
+                            padding: 2px 6px; background: #f3f4f6; border-radius: 4px; }
 
   /* Error */
   .error-box { background: #fee2e2; border: 1px solid #f09595; border-radius: 8px; padding: 14px; color: #791f1f; font-size: 13px; margin-top: 12px; }
@@ -172,9 +213,9 @@
 <body>
 
 <div class="header">
-  <div class="logo">SR</div>
+  <div class="logo">ICRS</div>
   <div>
-    <div class="header-title">S-Rank ICRS</div>
+    <div class="header-title">ICRS</div>
     <div class="header-sub">Intelligent Candidate Ranking System &middot; NUS-ISS MTech AI</div>
   </div>
   <button class="btn-back" id="backBtn" style="display:none" onclick="showInput()">&#8592; New Search</button>
@@ -265,46 +306,119 @@ function getScoreClass(score) {
   return "low";
 }
 
-function createRadarSVG(dimensions, size) {
-  const cx = size/2, cy = size/2, r = size/2 - 28;
-  const n = dimensions.length;
-  const step = 2 * Math.PI / n;
-  const pt = (i, val) => {
-    const a = i * step - Math.PI/2;
-    const d = (val/100) * r;
-    return { x: cx + d*Math.cos(a), y: cy + d*Math.sin(a) };
+function buildKbFlagsPanel(expertFlags) {
+  // Six expert flags rendered as a panel matching the reference image.
+  // Each flag has a colored shape icon. Value displays as TRUE (green) or FALSE (red).
+  const FLAG_META = {
+    "HIGH_POTENTIAL":         { label: "High Potential",     icon: "★", color: "#10B981" },
+    "LEADERSHIP_MATCH":       { label: "Leadership Match",   icon: "◆", color: "#3B82F6" },
+    "OVERQUALIFICATION_FLAG": { label: "Overqualified",      icon: "●", color: "#F97316" },
+    "AVAILABILITY_RISK":      { label: "Availability Risk",  icon: "▲", color: "#EF4444" },
+    "RELOCATION_FLAG":        { label: "Relocation",         icon: "■", color: "#0EA5E9" },
+    "WORK_VISA_FLAG":         { label: "Work Visa",          icon: "▲", color: "#F59E0B" },
   };
+  const ORDER = [
+    "HIGH_POTENTIAL", "LEADERSHIP_MATCH",
+    "OVERQUALIFICATION_FLAG", "AVAILABILITY_RISK",
+    "RELOCATION_FLAG", "WORK_VISA_FLAG",
+  ];
+  const byName = {};
+  (expertFlags || []).forEach(f => { byName[f.name] = f; });
 
-  let svg = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
-
-  // Grid
-  [0.25, 0.5, 0.75, 1.0].forEach(level => {
-    const pts = Array.from({length:n}, (_,i) => pt(i, level*100));
-    const d = pts.map((p,i) => `${i===0?"M":"L"}${p.x},${p.y}`).join(" ") + "Z";
-    svg += `<path d="${d}" fill="none" stroke="#ddd" stroke-width="0.5"/>`;
+  let rows = "";
+  ORDER.forEach(name => {
+    const meta = FLAG_META[name];
+    if (!meta) return;
+    const f = byName[name];
+    let valueHtml;
+    if (!f || f.value === undefined || f.value === null) {
+      valueHtml = `<span class="kb-flag-value-neutral">—</span>`;
+    } else if (f.value === true) {
+      valueHtml = `<span class="kb-flag-value-true">TRUE</span>`;
+    } else {
+      valueHtml = `<span class="kb-flag-value-false">FALSE</span>`;
+    }
+    const tooltip = (f && f.reason) ? String(f.reason).replace(/"/g, '&quot;') : '';
+    rows += `
+      <div class="kb-flag-row" title="${tooltip}">
+        <div class="kb-flag-icon" style="color:${meta.color}">${meta.icon}</div>
+        <div class="kb-flag-name">${meta.label}</div>
+        ${valueHtml}
+      </div>`;
   });
 
-  // Axes
-  for (let i=0; i<n; i++) {
-    const end = pt(i, 100);
-    svg += `<line x1="${cx}" y1="${cy}" x2="${end.x}" y2="${end.y}" stroke="#e0e0e0" stroke-width="0.5"/>`;
+  return `
+    <div class="kb-flags-panel">
+      <div class="kb-flags-header">KB Expert Flags (Step 2)</div>
+      <div class="kb-flags-body">
+        ${rows}
+      </div>
+    </div>`;
+}
+
+function buildCandidateSummary(c) {
+  // Rich, conversational summary including role context, key strengths,
+  // concerns, and flag highlights. Replaces the old terse one-liner.
+  const name = c.name || `Candidate ${c.rank}`;
+  const title = (c.job_titles && c.job_titles[0]) || "Candidate";
+  const exp = c.experience_years || 0;
+  const edu = c.education_level || "—";
+  const score = c.overall_score;
+
+  const dims = (c.dimensions || []).slice().sort((a, b) => b.score - a.score);
+  const strong = dims.filter(d => d.score >= 75);
+  const weak = dims.filter(d => d.score < 50);
+
+  const flagsByName = {};
+  (c.expert_flags || []).forEach(f => { flagsByName[f.name] = f; });
+  const isLeader     = flagsByName["LEADERSHIP_MATCH"]?.value === true;
+  const isHighPot    = flagsByName["HIGH_POTENTIAL"]?.value === true;
+  const isOverqual   = flagsByName["OVERQUALIFICATION_FLAG"]?.value === true;
+  const hasAvailRisk = flagsByName["AVAILABILITY_RISK"]?.value === true;
+  const hasVisaIssue = flagsByName["WORK_VISA_FLAG"]?.value === true;
+  const needReloc    = flagsByName["RELOCATION_FLAG"]?.value === true;
+
+  let verdict;
+  if (score >= 80)      verdict = "is a strong fit";
+  else if (score >= 65) verdict = "is a moderate fit";
+  else if (score >= 50) verdict = "is a borderline fit";
+  else                  verdict = "is a weak fit";
+
+  let s1 = `<strong>${name}</strong> &mdash; ${title} with ${exp}y experience and a ${edu} background &mdash; ${verdict} for this role with an overall score of <strong>${score}/100</strong> (rank ${c.rank}).`;
+
+  let s2 = "";
+  if (strong.length > 0) {
+    const strList = strong.map(d => `<strong>${d.name}</strong> (${Math.round(d.score)}%)`).join(", ");
+    s2 = `Strong on ${strList}.`;
   }
 
-  // Data polygon
-  const dataPoints = dimensions.map((d,i) => pt(i, d.score));
-  const pathD = dataPoints.map((p,i) => `${i===0?"M":"L"}${p.x},${p.y}`).join(" ") + "Z";
-  svg += `<path d="${pathD}" fill="rgba(232,118,33,0.2)" stroke="#E87621" stroke-width="2"/>`;
-  dataPoints.forEach(p => { svg += `<circle cx="${p.x}" cy="${p.y}" r="3.5" fill="#E87621"/>`; });
+  let s3 = "";
+  if (weak.length > 0) {
+    const weakList = weak.map(d => `${d.name} (${Math.round(d.score)}%)`).join(", ");
+    s3 = `Weaker on ${weakList}.`;
+  }
 
-  // Labels
-  dimensions.forEach((d,i) => {
-    const lp = pt(i, 118);
-    const short = d.name.replace("Technical Skills","Tech").replace("Miscellaneous","Misc");
-    svg += `<text x="${lp.x}" y="${lp.y}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#666" font-weight="500" font-family="DM Sans,sans-serif">${short}</text>`;
-  });
+  const flagPhrases = [];
+  if (isLeader)      flagPhrases.push("leadership posture aligns with the role");
+  if (isHighPot)     flagPhrases.push("multiple high-potential signals (advanced education, certifications, or recognised performance)");
+  if (isOverqual)    flagPhrases.push("flagged as overqualified &mdash; potential flight risk");
+  if (hasAvailRisk)  flagPhrases.push("availability risk detected (long notice, ongoing degree, or visa pending)");
+  if (hasVisaIssue)  flagPhrases.push("visa sponsorship may be required");
+  if (needReloc)     flagPhrases.push("relocation likely needed");
 
-  svg += "</svg>";
-  return svg;
+  let s4 = "";
+  if (flagPhrases.length > 0) {
+    s4 = "Notable flags: " + flagPhrases.join("; ") + ".";
+  }
+
+  const matchedCount = (c.matched_skills || []).length;
+  const missingCount = (c.missing_skills || []).length;
+  let s5 = "";
+  if (matchedCount + missingCount > 0) {
+    s5 = `Matched <strong>${matchedCount}</strong> of ${matchedCount + missingCount} required skills.`;
+  }
+
+  return [s1, s2, s3, s4, s5].filter(Boolean).join(" ");
 }
 
 async function rankCandidates() {
@@ -320,7 +434,7 @@ async function rankCandidates() {
 
   btn.disabled = true;
   btn.classList.add("loading");
-  btn.textContent = "Analyzing resumes with S-Rank pipeline...";
+  btn.textContent = "Analyzing resumes with ICRS pipeline...";
 
   try {
     const formData = new FormData();
@@ -413,7 +527,12 @@ function renderResults(data) {
       </div>
 
       <div class="card-details" id="details-${idx}" style="display:${idx===0?'block':'none'}">
-        <div style="display:flex; gap:20px; flex-wrap:wrap">
+        <div class="justification">
+          <div class="justification-title">AI Justification</div>
+          <div class="justification-text">${buildCandidateSummary(c)}</div>
+        </div>
+
+        <div style="display:flex; gap:20px; flex-wrap:wrap; margin-top:14px">
           <div style="flex:1 1 260px">
             ${c.dimensions.map(d => {
               const color = d.score >= 75 ? "#16a34a" : d.score >= 50 ? "#E87621" : "#dc2626";
@@ -428,14 +547,9 @@ function renderResults(data) {
               </div>`;
             }).join("")}
           </div>
-          <div class="radar-container" style="flex:0 0 180px">
-            ${createRadarSVG(c.dimensions, 180)}
+          <div style="flex:0 0 230px">
+            ${buildKbFlagsPanel(c.expert_flags)}
           </div>
-        </div>
-
-        <div class="justification">
-          <div class="justification-title">AI Justification</div>
-          <div class="justification-text">${c.justification}</div>
         </div>
 
         <div class="skills-section">
