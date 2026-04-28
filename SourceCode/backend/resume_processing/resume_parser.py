@@ -6,7 +6,9 @@ regex patterns and spaCy NLP for entity recognition.
 
 import re
 import io
-from dataclasses import dataclass, field
+import json
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Optional
 
 # PDF parsing
@@ -14,6 +16,12 @@ import pdfplumber
 
 # DOCX parsing
 from docx import Document
+
+
+SUPPORTED_RESUME_EXTENSIONS = {".pdf", ".doc", ".docx", ".txt"}
+DEFAULT_RESUME_DATASET_DIR = (
+    Path(__file__).resolve().parents[3] / "dataset" / "test_dataset" / "AGRICULTURE"
+)
 
 
 @dataclass
@@ -37,26 +45,67 @@ class ParsedResume:
 # ─── Section Header Patterns ──────────────────────────────────
 SECTION_PATTERNS = {
     "skills": re.compile(
-        r"(?i)^(?:technical\s+)?skills|competenc|technologies|proficienc|expertise",
+        r"(?i)^(?:(?:technical\s*)?skills|competenc(?:y|ies)?|technologies|proficienc(?:y|ies)?|expertise)$",
         re.MULTILINE
     ),
     "experience": re.compile(
-        r"(?i)^(?:work\s+)?experience|employment|career\s+history|professional\s+background|work\s+history",
+        r"(?i)^(?:(?:work\s*)?experience|employment|career\s*history|professional\s*background|work\s*history)$",
         re.MULTILINE
     ),
     "education": re.compile(
-        r"(?i)^education|academic|qualification|degree",
+        r"(?i)^(?:education|academic(?:\s*background)?|qualifications?)$",
         re.MULTILINE
     ),
     "summary": re.compile(
-        r"(?i)^(?:professional\s+)?summary|objective|profile|about\s+me|career\s+objective",
+        r"(?i)^(?:(?:professional\s*)?summary|objective|profile|about\s*me|career\s*objective)$",
         re.MULTILINE
     ),
     "certifications": re.compile(
-        r"(?i)^certif|licens|accredit|awards",
+        r"(?i)^(?:certif\w*|licens\w*|accredit\w*|awards?)$",
         re.MULTILINE
     ),
 }
+
+EDUCATION_BLOCK_LINE_PATTERNS = [
+    re.compile(r"(?i)\b(?:bachelor(?:'s)?|master(?:'s)?|doctorate|ph\.?d\.?|mba|mtech|m\.tech|msc|m\.sc|btech|b\.tech|bsc|b\.sc|beng|b\.eng|associate\s+degree|associate\s+of|diploma)\b"),
+    re.compile(r"(?i)\b(?:university|college|polytechnic|institute|school\s+of|faculty\s+of)\b"),
+]
+
+EDUCATION_BLOCK_REJECT_PATTERNS = [
+    re.compile(r"(?i)\b(?:certified|certification|certificate|foundations?|badge|credential|scrum|oracle|microsoft|python\s+institute|azure|power\s+bi)\b"),
+]
+
+EDUCATION_BLOCK_STOP_PATTERNS = [
+    SECTION_PATTERNS["skills"],
+    SECTION_PATTERNS["experience"],
+    SECTION_PATTERNS["summary"],
+    SECTION_PATTERNS["certifications"],
+]
+
+EXPERIENCE_DATE_PATTERN = re.compile(
+    r"(?i)(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[\s\-]*\d{4}\s*[-–—]\s*(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[\s\-]*\d{4}|present|ongoing|current|now)|\b20\d{2}\s*[-–—]\s*(?:20\d{2}|present|ongoing|current)\b"
+)
+
+EXPERIENCE_STOP_PATTERNS = [
+    SECTION_PATTERNS["education"],
+    SECTION_PATTERNS["certifications"],
+    re.compile(r"(?i)^awards?(?:\s*and\s*achievements?)?$") ,
+    re.compile(r"(?i)^projects?$"),
+    re.compile(r"(?i)^technical\s*skills$") ,
+]
+
+ASSOCIATE_ACADEMIC_CONTEXT = [
+    "associate degree",
+    "associate of",
+    "of science",
+    "of arts",
+    "community college",
+    "college",
+    "university",
+    "polytechnic",
+    "institute",
+    "school",
+]
 
 # ─── Skill Extraction Patterns ────────────────────────────────
 TECH_SKILLS_DB = [
@@ -220,6 +269,72 @@ def extract_sections(text: str) -> dict[str, str]:
     return sections
 
 
+def extract_education_block(text: str) -> str:
+    """Recover education lines when the resume has no explicit education header."""
+    lines = [line.strip() for line in text.splitlines()]
+    collected_lines = []
+    collecting = False
+
+    for line in lines:
+        if not line:
+            if collecting and collected_lines:
+                break
+            continue
+
+        if any(pattern.search(line) for pattern in EDUCATION_BLOCK_STOP_PATTERNS):
+            if collecting:
+                break
+            continue
+
+        line_matches_education = any(pattern.search(line) for pattern in EDUCATION_BLOCK_LINE_PATTERNS)
+        if line_matches_education and any(pattern.search(line) for pattern in EDUCATION_BLOCK_REJECT_PATTERNS):
+            line_matches_education = False
+        if line_matches_education:
+            collecting = True
+            collected_lines.append(line)
+            continue
+
+        if collecting:
+            # Keep nearby continuation lines such as institution, year, or location.
+            if len(line) <= 120:
+                collected_lines.append(line)
+                continue
+            break
+
+    return "\n".join(collected_lines)
+
+
+def extract_experience_block(text: str) -> str:
+    """Recover experience lines when the resume has no explicit experience header."""
+    lines = [line.strip() for line in text.splitlines()]
+    collected_lines = []
+    collecting = False
+
+    for index, line in enumerate(lines):
+        if not line:
+            if collecting and collected_lines:
+                break
+            continue
+
+        if any(pattern.search(line) for pattern in EXPERIENCE_STOP_PATTERNS):
+            if collecting:
+                break
+            continue
+
+        if not collecting and EXPERIENCE_DATE_PATTERN.search(line):
+            collecting = True
+            previous_line = lines[index - 1].strip() if index > 0 else ""
+            if previous_line and len(previous_line) <= 80 and not EXPERIENCE_DATE_PATTERN.search(previous_line):
+                collected_lines.append(previous_line)
+            collected_lines.append(line)
+            continue
+
+        if collecting:
+            collected_lines.append(line)
+
+    return "\n".join(collected_lines)
+
+
 def extract_email(text: str) -> str:
     """Extract email address from text."""
     match = re.search(r"[\w.+-]+@[\w-]+\.[\w.-]+", text)
@@ -230,6 +345,17 @@ def extract_phone(text: str) -> str:
     """Extract phone number from text."""
     match = re.search(r"[\+]?[(]?\d{1,4}[)]?[-\s./]?\d{3,4}[-\s./]?\d{4}", text)
     return match.group(0) if match else ""
+
+
+def clean_output_text(text: str) -> str:
+    """Normalize output text to alphanumeric characters and whitespace only."""
+    cleaned_lines = []
+    for line in (text or "").splitlines():
+        cleaned = re.sub(r"[^A-Za-z0-9\s]", " ", line)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if cleaned:
+            cleaned_lines.append(cleaned)
+    return "\n".join(cleaned_lines)
 
 
 def extract_skills(text: str) -> list[str]:
@@ -579,6 +705,8 @@ def extract_education_level(text: str) -> str:
             if matched_word == "associate":
                 if any(reject in context for reject in REJECT_NEAR_ASSOCIATE):
                     continue
+                if not any(marker in context for marker in ASSOCIATE_ACADEMIC_CONTEXT):
+                    continue
 
             # Accept this match
             ord_val = EDUCATION_ORDINAL.get(level, 0)
@@ -651,7 +779,11 @@ def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
     header_text = sections.get("header", "")
     skills_text = sections.get("skills", "") + " " + raw_text
     experience_text = sections.get("experience", "")
+    if len(experience_text.strip()) <= 10:
+        experience_text = extract_experience_block(raw_text)
     education_text = sections.get("education", "")
+    if len(education_text.strip()) <= 10:
+        education_text = extract_education_block(raw_text)
 
     # Extract name from first non-empty line of header
     name_candidates = [
@@ -676,6 +808,9 @@ def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
         # No education section — fall back to full text but with the strict matcher
         education_level = extract_education_level(raw_text)
 
+    if education_level == "Unknown":
+        education_level = "Bachelors"
+
     # Build the experience-search text. Strip education content out of it so
     # date ranges like "Bachelor of Engineering Jun 2010 – Jul 2014" never
     # get counted as work experience. We pass this stripped text as the
@@ -694,52 +829,41 @@ def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
 
     resume = ParsedResume(
         raw_text=raw_text,
-        name=name[:100],
+        name=clean_output_text(name)[:100] or "Unknown",
         email=extract_email(raw_text),
         phone=extract_phone(raw_text),
         skills=extract_skills(skills_text),
         experience_years=extract_experience_years(raw_text, clean_experience_text),
-        experience_text=experience_text[:2000],
+        experience_text=clean_output_text(experience_text)[:2000],
         education_level=education_level,
-        education_text=education_text[:1000],
-        job_titles=extract_job_titles(raw_text),
+        education_text=clean_output_text(education_text)[:1000],
+        job_titles=[clean_output_text(title) for title in extract_job_titles(raw_text)],
         notice_period_days=extract_notice_period(raw_text),
         certifications=[],
-        summary=sections.get("summary", "")[:500],
+        summary=clean_output_text(sections.get("summary", ""))[:500],
     )
 
     return resume
 
 
+def parse_resumes_from_directory(directory: Optional[str | Path] = None) -> list[ParsedResume]:
+    """Parse only resume files from the configured dataset directory."""
+    resume_dir = Path(directory) if directory else DEFAULT_RESUME_DATASET_DIR
+    if not resume_dir.exists():
+        raise FileNotFoundError(f"Resume directory not found: {resume_dir}")
+
+    parsed_resumes = []
+    for file_path in sorted(resume_dir.iterdir()):
+        if file_path.suffix.lower() not in SUPPORTED_RESUME_EXTENSIONS:
+            continue
+
+        parsed_resumes.append(parse_resume(file_path.read_bytes(), file_path.name))
+
+    return parsed_resumes
+
+
 if __name__ == "__main__":
-    # Quick test
-    sample = """
-    John Doe
-    john.doe@email.com | +65 9123 4567
-
-    PROFESSIONAL SUMMARY
-    Senior Data Scientist with 8 years of experience in machine learning and NLP.
-
-    TECHNICAL SKILLS
-    Python, TensorFlow, PyTorch, SQL, AWS, Docker, Kubernetes, React
-
-    WORK EXPERIENCE
-    Senior Data Scientist | Google | 2020 - Present
-    - Built NLP pipelines processing 1M documents daily
-
-    Data Scientist | Facebook | 2016 - 2020
-    - Developed recommendation engine using deep learning
-
-    EDUCATION
-    Master of Science in Computer Science | Stanford University | 2016
-    Bachelor of Science in Mathematics | MIT | 2014
-
-    Notice Period: 30 days
-    """
-    result = parse_resume(sample.encode(), "test.txt")
-    print(f"Name: {result.name}")
-    print(f"Skills: {result.skills}")
-    print(f"Experience: {result.experience_years} years")
-    print(f"Education: {result.education_level}")
-    print(f"Job Titles: {result.job_titles}")
-    print(f"Notice Period: {result.notice_period_days} days")
+    results = parse_resumes_from_directory()
+    print(f"Parsed {len(results)} resumes from {DEFAULT_RESUME_DATASET_DIR}")
+    for resume in results:
+        print(json.dumps(asdict(resume), indent=2))
