@@ -559,20 +559,34 @@ def extract_experience_years(text: str, experience_section: Optional[str] = None
         r"\s*(?:of\s+)?"                             # optional "of"
         r"(?:experience|exp\b|industry|professional|relevant)"  # context word
     )
-    matches = re.findall(pattern1, text, re.IGNORECASE)
-    if matches:
-        # Take the MAX explicit claim — handles "10+ years experience in ML, 5 years in NLP"
-        years = [float(m) for m in matches if 0 < float(m) <= 50]
-        if years:
-            return min(40.0, max(years))
+    explicit_years = [
+        float(m) for m in re.findall(pattern1, text, re.IGNORECASE)
+        if 0 < float(m) <= 50
+    ]
 
     # Also try "X+ years" alone if it's right at the top of the resume (header summary)
-    header = text[:500]
+    header = text[:1000]
     summary_match = re.search(r"(\d{1,2})\+\s*(?:years?|yrs?)\b", header, re.IGNORECASE)
     if summary_match:
         years = float(summary_match.group(1))
         if 0 < years <= 50:
-            return min(40.0, years)
+            explicit_years.append(years)
+
+    # Handle summary phrases like "17 years in the banking industry" that do not
+    # include the word "experience" immediately after the duration.
+    header_domain_matches = re.findall(
+        r"(\d{1,2})\+?\s*(?:years?|yrs?)\b\s+in\b(?=[^\n]{0,80}\b(?:industry|industries|domain|domains|sector|sectors|field|fields)\b)",
+        header,
+        re.IGNORECASE,
+    )
+    explicit_years.extend(
+        float(m) for m in header_domain_matches if 0 < float(m) <= 50
+    )
+
+    if explicit_years:
+        # Take the MAX explicit claim — handles resumes with both total experience
+        # and narrower subset claims such as "4 years in Scrum Teams".
+        return min(40.0, max(explicit_years))
 
     # ─── Restrict patterns 2 and 3 to the experience section ──
     # If no experience section was passed, use full text (less accurate but workable).
@@ -581,8 +595,8 @@ def extract_experience_years(text: str, experience_section: Optional[str] = None
     # ─── Pattern 2: month + year ranges ───────────────────
     MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
     range_re = re.compile(
-        rf"{MONTH}[\s\-]*?(\d{{4}})\s*[-–—]\s*"
-        rf"(?:{MONTH}[\s\-]*?(\d{{4}})|(Present|Ongoing|Current|Now))",
+        rf"{MONTH}[\s\-]*?(\d{{4}})\s*(?:[-–—]|to|till)\s*"
+        rf"(?:{MONTH}[\s\-]*?(\d{{4}})|(Present|Ongoing|Current|Now|Till\s+now))",
         re.IGNORECASE,
     )
     ranges = []
