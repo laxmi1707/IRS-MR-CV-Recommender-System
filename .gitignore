@@ -29,6 +29,7 @@ htmlcov/
 *.log
 *.tmp
 *.temp
+~$*
 
 # Editor settings
 .vscode/
@@ -37,3 +38,6 @@ htmlcov/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local vector stores
+SourceCode/backend/rag_database/chroma_db/

@@ -1,17 +1,25 @@
-"""
-main.py — FastAPI Backend for ICRS 6-Step Pipeline
-"""
+"""main.py — FastAPI Backend for ICRS 6-Step Pipeline."""
 
-import re
+import hashlib
+import json
+from pathlib import Path
+
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional
-import json
 
 from decision_automation.eligibility_engine import check_eligibility
 from jd_processing.jd_parsing import parse_job_description
-from resume_processing.resume_parser import parse_resume
+from rag_database.chroma_store import ChromaResumeStore
+from resume_processing.resume_parser import (
+    ParsedResume,
+    ResumeParseError,
+    SUPPORTED_RESUME_EXTENSIONS,
+    parse_resume,
+    parsed_resume_from_dict,
+    parsed_resume_to_dict,
+)
 from scoring_ranking_engine.scoring_engine import CandidateRanking, get_sbert_model, rank_candidates
 from business_optimization.ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
 
@@ -28,6 +36,73 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+resume_store: Optional[ChromaResumeStore] = None
+
+
+def get_resume_store() -> ChromaResumeStore:
+    global resume_store
+    if resume_store is None:
+        resume_store = ChromaResumeStore()
+    return resume_store
+
+
+def _build_file_hash(file_bytes: bytes) -> str:
+    return hashlib.sha256(file_bytes).hexdigest()
+
+
+def _build_ingested_resume_payload(record: dict, status: str) -> dict:
+    return {
+        **record,
+        "status": status,
+    }
+
+
+async def ingest_uploaded_resumes(resume_files: list[UploadFile]) -> tuple[list[ParsedResume], list[dict], list[dict]]:
+    parsed_resumes: list[ParsedResume] = []
+    stored_resumes: list[dict] = []
+    failed_files: list[dict] = []
+    store = get_resume_store()
+
+    for resume_file in resume_files:
+        filename = resume_file.filename or "resume.pdf"
+        extension = Path(filename).suffix.lower()
+        if extension not in SUPPORTED_RESUME_EXTENSIONS:
+            failed_files.append({
+                "filename": filename,
+                "error": "Unsupported file type. Upload PDF, DOCX, or DOC files.",
+            })
+            continue
+
+        file_bytes = await resume_file.read()
+        if not file_bytes:
+            failed_files.append({
+                "filename": filename,
+                "error": "Uploaded file is empty.",
+            })
+            continue
+
+        file_hash = _build_file_hash(file_bytes)
+        existing_record = store.find_resume_by_file_hash(file_hash)
+        if existing_record:
+            parsed_resumes.append(parsed_resume_from_dict(existing_record))
+            stored_resumes.append(_build_ingested_resume_payload(existing_record, "already_stored"))
+            continue
+
+        try:
+            parsed_resume = parse_resume(file_bytes, filename)
+            stored_record = store.upsert_parsed_resume(parsed_resume, filename, file_hash)
+        except ResumeParseError as exc:
+            failed_files.append({"filename": filename, "error": str(exc)})
+            continue
+        except Exception as exc:
+            failed_files.append({"filename": filename, "error": f"Failed to store parsed resume: {exc}"})
+            continue
+
+        parsed_resumes.append(parsed_resume)
+        stored_resumes.append(_build_ingested_resume_payload(stored_record, "stored"))
+
+    return parsed_resumes, stored_resumes, failed_files
 
 
 @app.get("/health")
@@ -57,16 +132,17 @@ async def rank_resumes(
 
         jd = parse_job_description(job_description, title=job_title)
 
-        parsed_resumes = []
-        for resume_file in resumes:
-            file_bytes = await resume_file.read()
-            filename = resume_file.filename or "resume.pdf"
-            parsed = parse_resume(file_bytes, filename)
-            parsed_resumes.append(parsed)
+        parsed_resumes, stored_resumes, failed_files = await ingest_uploaded_resumes(resumes)
 
         if not parsed_resumes:
-            return JSONResponse(status_code=400,
-                content={"success": False, "message": "No valid resumes."})
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "No valid resumes were parsed from the uploaded files.",
+                    "failed_files": failed_files,
+                },
+            )
 
         sbert_model = get_sbert_model()
 
@@ -157,6 +233,16 @@ async def rank_resumes(
             "success": True,
             "message": f"Processed {len(parsed_resumes)} resumes. "
                        f"{len(eligible)} eligible, {len(not_applicable)} filtered out.",
+            "parsed_resumes": [
+                {
+                    **parsed_resume_to_dict(parsed_resume),
+                    "candidate_id": stored_resumes[index].get("candidate_id", ""),
+                    "source_filename": stored_resumes[index].get("source_filename", ""),
+                    "status": stored_resumes[index].get("status", "stored"),
+                }
+                for index, parsed_resume in enumerate(parsed_resumes)
+            ],
+            "failed_files": failed_files,
             "pipeline": {
                 "step1_eligibility": f"{len(not_applicable)} candidates filtered as NA",
                 "step2_flags": "Expert flags assigned to eligible candidates",
@@ -188,20 +274,41 @@ async def rank_resumes(
 
 
 @app.post("/api/parse-resume")
-async def parse_single_resume(resume: UploadFile = File(...)):
+async def parse_uploaded_resumes(resumes: list[UploadFile] = File(...)):
     try:
-        file_bytes = await resume.read()
-        filename = resume.filename or "resume.pdf"
-        parsed = parse_resume(file_bytes, filename)
+        parsed_resumes, stored_resumes, failed_files = await ingest_uploaded_resumes(resumes)
+        if not parsed_resumes:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "No valid resumes were parsed from the uploaded files.",
+                    "failed_files": failed_files,
+                },
+            )
+
+        stored_count = sum(1 for resume in stored_resumes if resume.get("status") == "stored")
+        already_stored_count = sum(1 for resume in stored_resumes if resume.get("status") == "already_stored")
+
         return {
             "success": True,
-            "data": {
-                "name": parsed.name, "email": parsed.email,
-                "phone": parsed.phone, "skills": parsed.skills,
-                "experience_years": parsed.experience_years,
-                "education_level": parsed.education_level,
-                "job_titles": parsed.job_titles,
-                "notice_period_days": parsed.notice_period_days,
+            "message": f"Parsed {len(parsed_resumes)} resumes and stored them in the RAG database.",
+            "resumes": [
+                {
+                    **parsed_resume_to_dict(parsed_resume),
+                    "candidate_id": stored_resumes[index].get("candidate_id", ""),
+                    "source_filename": stored_resumes[index].get("source_filename", ""),
+                    "file_hash": stored_resumes[index].get("file_hash", ""),
+                    "status": stored_resumes[index].get("status", "stored"),
+                }
+                for index, parsed_resume in enumerate(parsed_resumes)
+            ],
+            "failed_files": failed_files,
+            "counts": {
+                "parsed": len(parsed_resumes),
+                "stored": stored_count,
+                "already_stored": already_stored_count,
+                "failed": len(failed_files),
             },
         }
     except Exception as e:

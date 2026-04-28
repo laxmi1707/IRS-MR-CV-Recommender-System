@@ -6,8 +6,9 @@ regex patterns and spaCy NLP for entity recognition.
 
 import re
 import io
+import zipfile
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 # PDF parsing
 import pdfplumber
@@ -32,6 +33,13 @@ class ParsedResume:
     notice_period_days: int = 90  # default assumption
     certifications: list[str] = field(default_factory=list)
     summary: str = ""
+
+
+class ResumeParseError(ValueError):
+    """Raised when a resume cannot be parsed into readable text."""
+
+
+SUPPORTED_RESUME_EXTENSIONS = {".pdf", ".docx", ".doc"}
 
 
 # ─── Section Header Patterns ──────────────────────────────────
@@ -66,7 +74,7 @@ TECH_SKILLS_DB = [
     # Frameworks
     "react", "angular", "vue", "django", "flask", "fastapi", "spring",
     "node.js", "express", "next.js", "tensorflow", "pytorch", "keras",
-    "scikit-learn", "pandas", "numpy", "spark", "hadoop", "airflow",
+    "scikit-learn", "pandas", "numpy", "spark", "hadoop", "airflow", "TestNG", "junit", "BDD", "cucumber","selenium",
     # Databases
     "sql", "mysql", "postgresql", "mongodb", "redis", "elasticsearch",
     "dynamodb", "cassandra", "neo4j", "oracle",
@@ -83,9 +91,9 @@ TECH_SKILLS_DB = [
     "power bi", "tableau", "looker", "data visualization",
     "statistics", "a/b testing", "hypothesis testing",
     # Other
-    "agile", "scrum", "jira", "rest api", "graphql", "microservices",
+    "agile", "waterfall" "scrum", "jira", "rest api", "graphql", "microservices",
     "system design", "oop", "design patterns", "html", "css",
-    "banking", "finance", "healthcare", "e-commerce", "cybersecurity", "blockchain"
+    "banking", "finance", "healthcare", "e-commerce", "cybersecurity", "blockchain","kanban","scrum master", "communication","problem solving",
     
 ]
 
@@ -113,7 +121,9 @@ EDUCATION_LEVELS = {
     "associate": "Diploma",
     "certificate": "Certificate",
     "high school": "HighSchool",
+    "HSC": "HighSchool",
     "secondary": "HighSchool",
+    "SSC": "HighSchool",
 }
 
 EDUCATION_ORDINAL = {
@@ -128,18 +138,34 @@ EDUCATION_ORDINAL = {
 
 # ─── Job Title Patterns ───────────────────────────────────────
 JOB_TITLE_PATTERNS = [
-    r"(?i)(?:senior|junior|lead|principal|staff|chief)?\s*(?:software|data|ml|ai|devops|cloud|full\s*stack|front\s*end|back\s*end|mobile)\s*(?:engineer|developer|architect|scientist|analyst)",
+    # ─── Tech / Engineering ───
+    r"(?i)(?:senior|junior|lead|principal|staff|chief)?\s*(?:software|data|ml|ai|devops|cloud|full\s*stack|front\s*end|back\s*end|mobile|systems?|security|network)\s*(?:engineer|developer|architect|scientist|analyst|administrator)",
     r"(?i)(?:senior|junior|lead|principal)?\s*(?:product|project|program|engineering)\s*manager",
     r"(?i)(?:senior|junior)?\s*(?:business|data|systems?|research)\s*analyst",
+    r"(?i)chief\s+(?:technology|executive|operating|information|product|data)\s+officer",
     r"(?i)(?:cto|ceo|coo|vp|director|head)\s+(?:of\s+)?(?:engineering|technology|data|product)",
     r"(?i)(?:technical|team|engineering)\s*lead",
     r"(?i)(?:solutions?|enterprise|technical)\s*architect",
     r"(?i)data\s*(?:engineer|scientist|analyst)",
     r"(?i)machine\s*learning\s*engineer",
     r"(?i)research\s*(?:engineer|scientist)",
+    r"(?i)(?:lead|senior|principal)?\s*(?:qa|quality\s*assurance|test|testing)\s*(?:engineer|analyst|architect|lead|manager)",
+    r"(?i)(?:technical\s+support|support)\s*engineer",
+    r"(?i)(?:yoga|group\s+fitness|fitness|physical|clinical\s+exercise|exercise)\s*(?:teacher|instructor|therapist|physiologist)",
     r"(?i)consultant",
     r"(?i)intern",
 ]
+
+TITLE_NORMALIZATIONS = {
+    r"(?i)leadtestanalyst": "lead test analyst",
+    r"(?i)chieftechnologyofficer": "chief technology officer",
+    r"(?i)technicalsupportengineer": "technical support engineer",
+    r"(?i)yogateacher": "yoga teacher",
+    r"(?i)qalead": "qa lead",
+    r"(?i)seniortestanalyst": "senior test analyst",
+    r"(?i)testarchitect": "test architect",
+    r"(?i)teamlead": "team lead",
+}
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -155,7 +181,13 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
 
 def extract_text_from_docx(file_bytes: bytes) -> str:
     """Extract text from DOCX using python-docx."""
-    doc = Document(io.BytesIO(file_bytes))
+    try:
+        doc = Document(io.BytesIO(file_bytes))
+    except zipfile.BadZipFile as exc:
+        raise ResumeParseError(
+            "Invalid .docx file. Upload a valid Word document or PDF."
+        ) from exc
+
     text_parts = []
     for para in doc.paragraphs:
         if para.text.strip():
@@ -167,6 +199,31 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
                 if cell.text.strip():
                     text_parts.append(cell.text)
     return "\n".join(text_parts)
+
+
+def extract_text_from_doc(file_bytes: bytes) -> str:
+    """Best-effort extraction for legacy .doc files."""
+    candidate_texts = [
+        file_bytes.decode("utf-16le", errors="ignore"),
+        file_bytes.decode("latin-1", errors="ignore"),
+    ]
+
+    best_text = ""
+    best_token_count = 0
+    for candidate in candidate_texts:
+        cleaned = re.sub(r"[\x00-\x08\x0b-\x1f]", " ", candidate)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        token_count = len(re.findall(r"[A-Za-z]{3,}", cleaned))
+        if token_count > best_token_count:
+            best_text = cleaned
+            best_token_count = token_count
+
+    if best_token_count < 20:
+        raise ResumeParseError(
+            "Unable to extract readable text from the .doc file. Upload .docx or PDF."
+        )
+
+    return best_text
 
 
 def extract_sections(text: str) -> dict[str, str]:
@@ -206,19 +263,76 @@ def extract_phone(text: str) -> str:
     return match.group(0) if match else ""
 
 
-def extract_skills(text: str) -> list[str]:
-    """Match known technical skills against resume text."""
+def _extract_skill_candidates(skills_section: str) -> list[str]:
+    """Extract comma-separated skill phrases from the explicit skills section."""
+    candidates = []
+    seen = set()
+    normalized_lines = []
+
+    for raw_line in skills_section.splitlines():
+        line = raw_line.strip()
+        if not line or re.fullmatch(r"[_\-\s]+", line):
+            continue
+
+        if normalized_lines and ":" not in line and len(line.split()) <= 2:
+            normalized_lines[-1] = f"{normalized_lines[-1]} {line}"
+        else:
+            normalized_lines.append(line)
+
+    for line in normalized_lines:
+
+        if ":" in line:
+            label, values = line.split(":", 1)
+            label_lower = label.strip().lower()
+            if any(token in label_lower for token in (
+                "skill", "technique", "technology", "framework",
+                "database", "language", "platform", "tool",
+            )):
+                line = values.strip()
+
+        for chunk in re.split(r"[•,;|]", line):
+            candidate = re.sub(r"\([^)]*\)", "", chunk)
+            candidate = re.sub(r"\s+", " ", candidate).strip(" .:-")
+            candidate_lower = candidate.lower()
+
+            if not candidate_lower or candidate_lower in seen:
+                continue
+            if re.search(r"\d", candidate_lower):
+                continue
+            if candidate_lower in {
+                "skills", "hard skills", "soft skills", "technical skills",
+                "tools", "technologies", "techniques", "frameworks",
+                "databases", "languages", "platforms", "standards",
+            }:
+                continue
+
+            word_count = len(re.findall(r"[a-zA-Z][a-zA-Z+\-/#]*", candidate_lower))
+            if word_count == 0 or word_count > 4:
+                continue
+
+            candidates.append(candidate_lower)
+            seen.add(candidate_lower)
+
+    return candidates
+
+
+def extract_skills(text: str, skills_section: str = "") -> list[str]:
+    """Match known skills against resume text and explicit skill-section phrases."""
     text_lower = text.lower()
-    found_skills = []
+    found_skills = set()
     for skill in TECH_SKILLS_DB:
         # Use word boundary matching for short skills to avoid false positives
         if len(skill) <= 3:
             if re.search(r"\b" + re.escape(skill) + r"\b", text_lower):
-                found_skills.append(skill)
+                found_skills.add(skill)
         else:
             if skill in text_lower:
-                found_skills.append(skill)
-    return list(set(found_skills))
+                found_skills.add(skill)
+
+    if skills_section:
+        found_skills.update(_extract_skill_candidates(skills_section))
+
+    return sorted(found_skills)
 
 
 def extract_experience_years(text: str) -> float:
@@ -261,13 +375,37 @@ def extract_education_level(text: str) -> str:
 
 def extract_job_titles(text: str) -> list[str]:
     """Extract job titles from resume text."""
+    normalized_text = text
+    for pattern, replacement in TITLE_NORMALIZATIONS.items():
+        normalized_text = re.sub(pattern, replacement, normalized_text)
+    normalized_text = re.sub(r"\s+", " ", normalized_text)
+
     titles = []
+    header_window = 400
+    recent_role_pattern = re.compile(r"(?i)\b(?:present|current|202[3-6])\b")
+
     for pattern in JOB_TITLE_PATTERNS:
-        matches = re.findall(pattern, text)
-        titles.extend(matches)
-    # Clean and deduplicate
-    cleaned = list(set(t.strip().title() for t in titles if len(t.strip()) > 3))
-    return cleaned[:5]  # limit to top 5
+        for match in re.finditer(pattern, normalized_text):
+            title = re.sub(r"\s+", " ", match.group(0)).strip()
+            if len(title) <= 3:
+                continue
+
+            context_start = max(0, match.start() - 120)
+            context_end = min(len(normalized_text), match.end() + 120)
+            context = normalized_text[context_start:context_end]
+            is_header = match.start() <= header_window
+            is_recent = bool(recent_role_pattern.search(context))
+
+            titles.append((not is_header, not is_recent, match.start(), title.title()))
+
+    ordered_titles = []
+    seen = set()
+    for _, _, _, title in sorted(titles, key=lambda item: (item[0], item[1], item[2])):
+        if title not in seen:
+            ordered_titles.append(title)
+            seen.add(title)
+
+    return ordered_titles[:5]  # limit to top 5
 
 
 def extract_notice_period(text: str) -> int:
@@ -296,29 +434,78 @@ def extract_notice_period(text: str) -> int:
     return 90
 
 
+def parsed_resume_to_dict(parsed_resume: ParsedResume) -> dict[str, Any]:
+    """Serialize a parsed resume for API responses and persistence."""
+    return {
+        "name": parsed_resume.name,
+        "email": parsed_resume.email,
+        "phone": parsed_resume.phone,
+        "skills": list(parsed_resume.skills),
+        "experience_years": parsed_resume.experience_years,
+        "experience_text": parsed_resume.experience_text,
+        "education_level": parsed_resume.education_level,
+        "education_text": parsed_resume.education_text,
+        "job_titles": list(parsed_resume.job_titles),
+        "notice_period_days": parsed_resume.notice_period_days,
+        "certifications": list(parsed_resume.certifications),
+        "summary": parsed_resume.summary,
+        "raw_text": parsed_resume.raw_text,
+    }
+
+
+def parsed_resume_from_dict(data: Mapping[str, Any]) -> ParsedResume:
+    """Rebuild a ParsedResume from a persisted dictionary."""
+    return ParsedResume(
+        raw_text=str(data.get("raw_text", "")),
+        name=str(data.get("name", "")),
+        email=str(data.get("email", "")),
+        phone=str(data.get("phone", "")),
+        skills=list(data.get("skills", [])),
+        experience_years=float(data.get("experience_years", 0.0) or 0.0),
+        experience_text=str(data.get("experience_text", "")),
+        education_level=str(data.get("education_level", "")),
+        education_text=str(data.get("education_text", "")),
+        job_titles=list(data.get("job_titles", [])),
+        notice_period_days=int(data.get("notice_period_days", 90) or 90),
+        certifications=list(data.get("certifications", [])),
+        summary=str(data.get("summary", "")),
+    )
+
+
 def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
     """
     Main entry point: parse a resume file into structured data.
-    Supports PDF and DOCX formats.
+    Supports PDF, DOCX, and best-effort DOC formats.
     """
     # Step 1: Extract raw text based on file type
-    ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
-    if ext == "pdf":
-        raw_text = extract_text_from_pdf(file_bytes)
-    elif ext in ("docx", "doc"):
-        raw_text = extract_text_from_docx(file_bytes)
-    else:
-        raw_text = file_bytes.decode("utf-8", errors="ignore")
+    extension = "." + filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if extension not in SUPPORTED_RESUME_EXTENSIONS:
+        raise ResumeParseError(
+            f"Unsupported file type '{extension or 'unknown'}'. Upload PDF or Word files."
+        )
+
+    try:
+        if extension == ".pdf":
+            raw_text = extract_text_from_pdf(file_bytes)
+        elif extension == ".docx":
+            raw_text = extract_text_from_docx(file_bytes)
+        else:
+            raw_text = extract_text_from_doc(file_bytes)
+    except ResumeParseError:
+        raise
+    except Exception as exc:
+        raise ResumeParseError(f"Failed to parse {filename}: {exc}") from exc
 
     if not raw_text.strip():
-        return ParsedResume(raw_text="[Empty document]")
+        raise ResumeParseError(f"No readable text extracted from {filename}.")
 
     # Step 2: Split into sections
     sections = extract_sections(raw_text)
 
     # Step 3: Extract structured fields
     header_text = sections.get("header", "")
-    skills_text = sections.get("skills", "") + " " + raw_text
+    skills_section = sections.get("skills", "")
+    skills_text = skills_section or raw_text
     experience_text = sections.get("experience", "")
     education_text = sections.get("education", "")
 
@@ -336,7 +523,7 @@ def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
         name=name[:100],
         email=extract_email(raw_text),
         phone=extract_phone(raw_text),
-        skills=extract_skills(skills_text),
+        skills=extract_skills(skills_text, skills_section=skills_section),
         experience_years=extract_experience_years(raw_text),
         experience_text=experience_text[:2000],
         education_level=extract_education_level(education_text or raw_text),
@@ -375,7 +562,15 @@ if __name__ == "__main__":
 
     Notice Period: 30 days
     """
-    result = parse_resume(sample.encode(), "test.txt")
+    result = ParsedResume(
+        raw_text=sample,
+        name="John Doe",
+        skills=extract_skills(sample),
+        experience_years=extract_experience_years(sample),
+        education_level=extract_education_level(sample),
+        job_titles=extract_job_titles(sample),
+        notice_period_days=extract_notice_period(sample),
+    )
     print(f"Name: {result.name}")
     print(f"Skills: {result.skills}")
     print(f"Experience: {result.experience_years} years")

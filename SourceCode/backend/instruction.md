@@ -12,7 +12,9 @@ Main entrypoint:
 
 ## Recommended Python Version
 
-Use Python `3.10`, `3.11`, or `3.12`.
+This project uses Python `3.12`.
+
+Use Python `3.12` for local development, dependency installation, and running the backend.
 
 Some packages in `requirements.txt`, especially `scikit-learn==1.3.2`, may not install cleanly on Python `3.13` because wheels may be unavailable and pip may try to build from source.
 
