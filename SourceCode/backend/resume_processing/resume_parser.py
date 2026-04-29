@@ -373,7 +373,7 @@ def _is_education_context(text: str, match_start: int, match_end: int) -> bool:
     return False
 
 
-def extract_experience_years(text: str, experience_section: str = None) -> float:
+def extract_experience_years(text: str, experience_section: Optional[str] = None) -> float:
     """Estimate total years of experience from text patterns.
 
     Strategies in priority order:

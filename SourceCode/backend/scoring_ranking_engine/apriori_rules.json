@@ -1,0 +1,224 @@
+{
+  "_meta": {
+    "description": "Apriori rules mined offline from candidate skill co-occurrence patterns",
+    "version": "1.0",
+    "last_trained": "2024",
+    "rule_format": "antecedent_skills -> consequent_skill (confidence, lift)"
+  },
+  "rules": [
+    {
+      "antecedent": ["python", "scikit-learn"],
+      "consequent": "numpy",
+      "confidence": 0.82,
+      "lift": 2.1
+    },
+    {
+      "antecedent": ["python", "pandas"],
+      "consequent": "numpy",
+      "confidence": 0.85,
+      "lift": 2.3
+    },
+    {
+      "antecedent": ["python", "tensorflow"],
+      "consequent": "keras",
+      "confidence": 0.72,
+      "lift": 1.8
+    },
+    {
+      "antecedent": ["react", "javascript"],
+      "consequent": "css",
+      "confidence": 0.88,
+      "lift": 1.4
+    },
+    {
+      "antecedent": ["java", "spring"],
+      "consequent": "maven",
+      "confidence": 0.75,
+      "lift": 2.0
+    },
+    {
+      "antecedent": ["python", "flask"],
+      "consequent": "rest api",
+      "confidence": 0.70,
+      "lift": 1.9
+    },
+    {
+      "antecedent": ["aws", "docker"],
+      "consequent": "kubernetes",
+      "confidence": 0.65,
+      "lift": 2.5
+    },
+    {
+      "antecedent": ["machine learning", "python"],
+      "consequent": "data science",
+      "confidence": 0.80,
+      "lift": 1.7
+    },
+    {
+      "antecedent": ["sql", "python"],
+      "consequent": "pandas",
+      "confidence": 0.68,
+      "lift": 1.6
+    },
+    {
+      "antecedent": ["deep learning", "python"],
+      "consequent": "pytorch",
+      "confidence": 0.60,
+      "lift": 2.2
+    },
+    {
+      "antecedent": ["data science", "python"],
+      "consequent": "statistics",
+      "confidence": 0.72,
+      "lift": 1.5
+    },
+    {
+      "antecedent": ["python", "matplotlib"],
+      "consequent": "seaborn",
+      "confidence": 0.78,
+      "lift": 1.6
+    },
+    {
+      "antecedent": ["python", "numpy"],
+      "consequent": "scipy",
+      "confidence": 0.74,
+      "lift": 1.9
+    },
+    {
+      "antecedent": ["pandas", "data analysis"],
+      "consequent": "data cleaning",
+      "confidence": 0.83,
+      "lift": 1.8
+    },
+    {
+      "antecedent": ["machine learning", "scikit-learn"],
+      "consequent": "model evaluation",
+      "confidence": 0.81,
+      "lift": 1.7
+    },
+    {
+      "antecedent": ["deep learning", "tensorflow"],
+      "consequent": "gpu",
+      "confidence": 0.69,
+      "lift": 2.0
+    },
+    {
+      "antecedent": ["deep learning", "pytorch"],
+      "consequent": "cuda",
+      "confidence": 0.66,
+      "lift": 2.3
+    },
+    {
+      "antecedent": ["nlp", "python"],
+      "consequent": "spacy",
+      "confidence": 0.73,
+      "lift": 1.9
+    },
+    {
+      "antecedent": ["nlp", "deep learning"],
+      "consequent": "transformers",
+      "confidence": 0.77,
+      "lift": 2.2
+    },
+    {
+      "antecedent": ["aws", "ec2"],
+      "consequent": "s3",
+      "confidence": 0.84,
+      "lift": 1.8
+    },
+    {
+      "antecedent": ["aws", "lambda"],
+      "consequent": "serverless",
+      "confidence": 0.79,
+      "lift": 2.1
+    },
+    {
+      "antecedent": ["docker", "microservices"],
+      "consequent": "kubernetes",
+      "confidence": 0.71,
+      "lift": 2.4
+    },
+    {
+      "antecedent": ["react", "frontend"],
+      "consequent": "redux",
+      "confidence": 0.72,
+      "lift": 1.5
+    },
+    {
+      "antecedent": ["javascript", "node.js"],
+      "consequent": "express",
+      "confidence": 0.86,
+      "lift": 1.6
+    },
+    {
+      "antecedent": ["node.js", "express"],
+      "consequent": "rest api",
+      "confidence": 0.82,
+      "lift": 1.7
+    },
+    {
+      "antecedent": ["java", "hibernate"],
+      "consequent": "jpa",
+      "confidence": 0.76,
+      "lift": 1.9
+    },
+    {
+      "antecedent": ["sql", "database"],
+      "consequent": "indexing",
+      "confidence": 0.80,
+      "lift": 1.6
+    },
+    {
+      "antecedent": ["data engineering", "spark"],
+      "consequent": "hadoop",
+      "confidence": 0.67,
+      "lift": 2.0
+    },
+    {
+      "antecedent": ["etl", "data pipeline"],
+      "consequent": "airflow",
+      "confidence": 0.75,
+      "lift": 2.2
+    },
+    {
+      "antecedent": ["testing", "stlc"],
+      "consequent": "test cases",
+      "confidence": 0.88,
+      "lift": 1.9
+    },
+    {
+      "antecedent": ["testing", "test cases"],
+      "consequent": "test scenarios",
+      "confidence": 0.83,
+      "lift": 1.7
+    },
+    {
+      "antecedent": ["manual testing", "stlc"],
+      "consequent": "defect tracking",
+      "confidence": 0.85,
+      "lift": 2.0
+    },
+    {
+      "antecedent": ["automation testing", "selenium"],
+      "consequent": "webdriver",
+      "confidence": 0.90,
+      "lift": 1.8
+    },
+    {
+      "antecedent": ["api testing", "postman"],
+      "consequent": "rest api",
+      "confidence": 0.87,
+      "lift": 1.6
+    },
+    {
+      "antecedent": ["performance testing", "jmeter"],
+      "consequent": "load testing",
+      "confidence": 0.86,
+      "lift": 2.2
+    }
+  ],
+  "configuration": {
+    "apriori_bonus_per_implied_skill": 0.03,
+    "description": "Bonus score added for each implied skill detected via apriori rules"
+  }
+}

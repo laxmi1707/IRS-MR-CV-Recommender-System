@@ -2,6 +2,8 @@ import re
 import math
 import heapq
 import importlib
+import json
+import os
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -134,22 +136,37 @@ class CandidateRanking:
     reasoning_chain: str = ""
 
 
-# Apriori rules (mined offline)
-APRIORI_RULES = {
-    frozenset(["python", "scikit-learn"]): ("numpy", 0.82, 2.1),
-    frozenset(["python", "pandas"]): ("numpy", 0.85, 2.3),
-    frozenset(["python", "tensorflow"]): ("keras", 0.72, 1.8),
-    frozenset(["react", "javascript"]): ("css", 0.88, 1.4),
-    frozenset(["java", "spring"]): ("maven", 0.75, 2.0),
-    frozenset(["python", "flask"]): ("rest api", 0.70, 1.9),
-    frozenset(["aws", "docker"]): ("kubernetes", 0.65, 2.5),
-    frozenset(["machine learning", "python"]): ("data science", 0.80, 1.7),
-    frozenset(["sql", "python"]): ("pandas", 0.68, 1.6),
-    frozenset(["deep learning", "python"]): ("pytorch", 0.60, 2.2),
-    frozenset(["data science", "python"]): ("statistics", 0.72, 1.5),
-}
+# ═══════════════════════════════════════════════════════════════
+# LOAD APRIORI RULES FROM JSON
+# ═══════════════════════════════════════════════════════════════
 
-APRIORI_BONUS = 0.03
+def _load_apriori_rules():
+    """Load apriori rules from JSON configuration file."""
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    rules_file = os.path.join(current_dir, "apriori_rules.json")
+    
+    try:
+        with open(rules_file, 'r') as f:
+            config = json.load(f)
+        
+        # Convert to format used by scoring engine
+        apriori_rules = {}
+        for rule in config.get("rules", []):
+            antecedent = frozenset(rule["antecedent"])
+            consequent = rule["consequent"]
+            confidence = rule["confidence"]
+            lift = rule["lift"]
+            apriori_rules[antecedent] = (consequent, confidence, lift)
+        
+        apriori_bonus = config.get("configuration", {}).get("apriori_bonus_per_implied_skill", 0.03)
+        return apriori_rules, apriori_bonus
+    except Exception as e:
+        print(f"[ICRS] Warning: Could not load apriori_rules.json: {e}")
+        print("[ICRS] Using empty rules fallback.")
+        return {}, 0.03
+
+
+APRIORI_RULES, APRIORI_BONUS = _load_apriori_rules()
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -307,9 +324,9 @@ def score_education(resume, jd):
     elif candidate_level == required_level - 1:
         score = 0.75
     elif candidate_level == required_level - 2:
-        score = 0.60
+        score = 0.55
     else:
-        score = 0.45
+        score = 0.35
 
     explanation = (
         f"Candidate: {resume.education_level} (L{candidate_level}), "
@@ -561,7 +578,7 @@ def _generate_justification(resume, dim_scores, overall, flag_result):
 
 
 def parse_job_description(text: str, title: str = "") -> JobDescription:
-    from resume_parser import extract_skills, extract_education_level, EDUCATION_ORDINAL
+    from resume_processing.resume_parser import extract_skills, extract_education_level, EDUCATION_ORDINAL
 
     skills = extract_skills(text)
     exp_match = re.findall(r"(\d{1,2})\+?\s*(?:years?|yrs?)", text, re.IGNORECASE)
