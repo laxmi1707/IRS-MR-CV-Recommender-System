@@ -89,6 +89,65 @@
   .summary-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
   .summary-value { font-size: 24px; font-weight: 800; color: var(--navy); font-family: 'DM Serif Display', serif; margin-top: 4px; }
 
+  /* GA Weights panel — surfaces the GA-tuned weights used for this ranking */
+  .ga-weights-panel {
+    background: linear-gradient(135deg, #fffaf2, #fff);
+    border: 1px solid #f5d6b3;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+  }
+  .ga-weights-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ga-weights-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--navy);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .ga-category-tag {
+    font-size: 11px;
+    color: var(--text);
+    background: rgba(232, 118, 33, 0.12);
+    padding: 4px 10px;
+    border-radius: 12px;
+  }
+  .ga-category-tag strong { color: var(--orange); font-weight: 700; }
+  .ga-weights-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ga-weight-item {
+    flex: 1;
+    min-width: 100px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: center;
+  }
+  .ga-weight-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 2px;
+  }
+  .ga-weight-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--orange);
+    font-family: 'DM Sans', sans-serif;
+  }
+
   /* Candidate card */
   .candidate-card {
     background: white; border-radius: 12px; padding: 20px; margin-bottom: 14px;
@@ -197,6 +256,52 @@
                           padding: 2px 6px; background: #fee2e2; border-radius: 4px; }
   .kb-flag-value-neutral { color: #6b7280; font-weight: 600; font-size: 11px;
                             padding: 2px 6px; background: #f3f4f6; border-radius: 4px; }
+
+  /* NA candidate card — muted styling so eligible candidates stand out */
+  .candidate-card.na-card {
+    background: #fafafa;
+    border: 1px solid #e5e5e5;
+    opacity: 0.85;
+    cursor: default;
+  }
+  .candidate-card.na-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+  .rank-badge.na-badge {
+    background: #6b7280;
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .na-label {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    display: inline-block;
+  }
+  .na-reason-box {
+    margin-top: 14px;
+    padding: 14px 16px;
+    background: #fef2f2;
+    border-left: 4px solid #dc2626;
+    border-radius: 6px;
+  }
+  .na-reason-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #991b1b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+  .na-reason-text {
+    font-size: 14px;
+    color: #1f2937;
+    line-height: 1.5;
+  }
 
   /* Error */
   .error-box { background: #fee2e2; border: 1px solid #f09595; border-radius: 8px; padding: 14px; color: #791f1f; font-size: 13px; margin-top: 12px; }
@@ -357,8 +462,8 @@ function buildKbFlagsPanel(expertFlags) {
 }
 
 function buildCandidateSummary(c) {
-  // Rich, conversational summary including role context, key strengths,
-  // concerns, and flag highlights. Replaces the old terse one-liner.
+  // Compact 2-sentence summary: who they are + verdict + top concern.
+  // Heavy detail (dimension scores, flag reasons) lives elsewhere on the card.
   const name = c.name || `Candidate ${c.rank}`;
   const title = (c.job_titles && c.job_titles[0]) || "Candidate";
   const exp = c.experience_years || 0;
@@ -366,59 +471,53 @@ function buildCandidateSummary(c) {
   const score = c.overall_score;
 
   const dims = (c.dimensions || []).slice().sort((a, b) => b.score - a.score);
-  const strong = dims.filter(d => d.score >= 75);
-  const weak = dims.filter(d => d.score < 50);
+  const topDim = dims[0];
+  const weakDim = dims[dims.length - 1];
 
   const flagsByName = {};
   (c.expert_flags || []).forEach(f => { flagsByName[f.name] = f; });
-  const isLeader     = flagsByName["LEADERSHIP_MATCH"]?.value === true;
-  const isHighPot    = flagsByName["HIGH_POTENTIAL"]?.value === true;
-  const isOverqual   = flagsByName["OVERQUALIFICATION_FLAG"]?.value === true;
-  const hasAvailRisk = flagsByName["AVAILABILITY_RISK"]?.value === true;
-  const hasVisaIssue = flagsByName["WORK_VISA_FLAG"]?.value === true;
-  const needReloc    = flagsByName["RELOCATION_FLAG"]?.value === true;
+  // Pick the single most-important flag worth mentioning (red flags first)
+  let flagNote = "";
+  if (flagsByName["OVERQUALIFICATION_FLAG"]?.value === true) {
+    flagNote = "flagged as overqualified";
+  } else if (flagsByName["AVAILABILITY_RISK"]?.value === true) {
+    flagNote = "availability risk noted";
+  } else if (flagsByName["LEADERSHIP_MATCH"]?.value === true) {
+    flagNote = "leadership profile matches";
+  } else if (flagsByName["HIGH_POTENTIAL"]?.value === true) {
+    flagNote = "high-potential profile";
+  }
 
   let verdict;
-  if (score >= 80)      verdict = "is a strong fit";
-  else if (score >= 65) verdict = "is a moderate fit";
-  else if (score >= 50) verdict = "is a borderline fit";
-  else                  verdict = "is a weak fit";
-
-  let s1 = `<strong>${name}</strong> &mdash; ${title} with ${exp}y experience and a ${edu} background &mdash; ${verdict} for this role with an overall score of <strong>${score}/100</strong> (rank ${c.rank}).`;
-
-  let s2 = "";
-  if (strong.length > 0) {
-    const strList = strong.map(d => `<strong>${d.name}</strong> (${Math.round(d.score)}%)`).join(", ");
-    s2 = `Strong on ${strList}.`;
-  }
-
-  let s3 = "";
-  if (weak.length > 0) {
-    const weakList = weak.map(d => `${d.name} (${Math.round(d.score)}%)`).join(", ");
-    s3 = `Weaker on ${weakList}.`;
-  }
-
-  const flagPhrases = [];
-  if (isLeader)      flagPhrases.push("leadership posture aligns with the role");
-  if (isHighPot)     flagPhrases.push("multiple high-potential signals (advanced education, certifications, or recognised performance)");
-  if (isOverqual)    flagPhrases.push("flagged as overqualified &mdash; potential flight risk");
-  if (hasAvailRisk)  flagPhrases.push("availability risk detected (long notice, ongoing degree, or visa pending)");
-  if (hasVisaIssue)  flagPhrases.push("visa sponsorship may be required");
-  if (needReloc)     flagPhrases.push("relocation likely needed");
-
-  let s4 = "";
-  if (flagPhrases.length > 0) {
-    s4 = "Notable flags: " + flagPhrases.join("; ") + ".";
-  }
+  if (score >= 80)      verdict = "strong fit";
+  else if (score >= 65) verdict = "moderate fit";
+  else if (score >= 50) verdict = "borderline fit";
+  else                  verdict = "weak fit";
 
   const matchedCount = (c.matched_skills || []).length;
-  const missingCount = (c.missing_skills || []).length;
-  let s5 = "";
-  if (matchedCount + missingCount > 0) {
-    s5 = `Matched <strong>${matchedCount}</strong> of ${matchedCount + missingCount} required skills.`;
-  }
+  const totalSkills = matchedCount + (c.missing_skills || []).length;
 
-  return [s1, s2, s3, s4, s5].filter(Boolean).join(" ");
+  // Sentence 1: identity + verdict + headline strength
+  let s1 = `<strong>${name}</strong> (${title}, ${exp}y, ${edu}) — ${verdict} at <strong>${score}/100</strong>`;
+  if (topDim) {
+    s1 += `, strongest on ${topDim.name} (${Math.round(topDim.score)}%)`;
+  }
+  s1 += ".";
+
+  // Sentence 2: skill match + most relevant flag (if any) + key weakness
+  const parts2 = [];
+  if (totalSkills > 0) {
+    parts2.push(`Matched ${matchedCount}/${totalSkills} required skills`);
+  }
+  if (weakDim && weakDim.score < 50) {
+    parts2.push(`weakest on ${weakDim.name} (${Math.round(weakDim.score)}%)`);
+  }
+  if (flagNote) {
+    parts2.push(flagNote);
+  }
+  let s2 = parts2.length ? parts2.join("; ") + "." : "";
+
+  return [s1, s2].filter(Boolean).join(" ");
 }
 
 async function rankCandidates() {
@@ -473,22 +572,51 @@ function renderResults(data) {
 
   let html = "";
 
+  // ─── Pull GA category and weights from first candidate (same for all) ───
+  // Used both in the summary bar and as a transparency panel below.
+  const firstWithGa = data.candidates.find(c => c.ga_weights);
+  const gaCategory = firstWithGa?.ga_category || "default";
+  const gaWeights = firstWithGa?.ga_weights || {};
+  const fmtPct = (v) => v != null ? `${Math.round(v * 100)}%` : "—";
+
   // Summary bar
   const topScore = data.candidates[0]?.overall_score || 0;
+  const eligibleCount = data.candidates.filter(c => c.is_eligible !== false).length;
+  const naCount = data.total_candidates - eligibleCount;
+
   html += `<div class="summary-bar">
     <div class="summary-card">
       <div class="summary-label">Position</div>
       <div class="summary-value" style="font-size:18px">${data.job_description.title}</div>
     </div>
     <div class="summary-card" style="flex:0 0 120px; text-align:center">
-      <div class="summary-label">Candidates</div>
-      <div class="summary-value">${data.total_candidates}</div>
+      <div class="summary-label">Eligible</div>
+      <div class="summary-value">${eligibleCount}${naCount > 0 ? ` <span style="font-size:13px; color:var(--muted)">/ ${naCount} NA</span>` : ''}</div>
     </div>
     <div class="summary-card" style="flex:0 0 120px; text-align:center">
       <div class="summary-label">Top Score</div>
       <div class="summary-value score-${getScoreClass(topScore)}">${topScore}</div>
     </div>
   </div>`;
+
+  // ─── GA Weights panel ──────────────────────────────────────
+  // Shows the category-tuned weights used for this ranking — full transparency
+  // about how each candidate's overall score was assembled from the 5 dimensions.
+  if (gaWeights.technical_skills != null) {
+    html += `<div class="ga-weights-panel">
+      <div class="ga-weights-header">
+        <span class="ga-weights-title">GA-Optimized Weights</span>
+        <span class="ga-category-tag">Category: <strong>${gaCategory}</strong></span>
+      </div>
+      <div class="ga-weights-row">
+        <div class="ga-weight-item"><div class="ga-weight-label">Technical Skills</div><div class="ga-weight-value">${fmtPct(gaWeights.technical_skills)}</div></div>
+        <div class="ga-weight-item"><div class="ga-weight-label">Experience</div><div class="ga-weight-value">${fmtPct(gaWeights.experience)}</div></div>
+        <div class="ga-weight-item"><div class="ga-weight-label">Education</div><div class="ga-weight-value">${fmtPct(gaWeights.education)}</div></div>
+        <div class="ga-weight-item"><div class="ga-weight-label">Availability</div><div class="ga-weight-value">${fmtPct(gaWeights.availability)}</div></div>
+        <div class="ga-weight-item"><div class="ga-weight-label">Miscellaneous</div><div class="ga-weight-value">${fmtPct(gaWeights.miscellaneous)}</div></div>
+      </div>
+    </div>`;
+  }
 
   // Skills tags
   if (data.job_description.required_skills?.length) {
@@ -500,8 +628,39 @@ function renderResults(data) {
     </div>`;
   }
 
-  // Candidate cards
-  data.candidates.forEach((c, idx) => {
+  // Candidate cards — sort eligible first, NA appended at the end
+  const sortedCandidates = [...data.candidates].sort((a, b) => {
+    const aNa = a.is_eligible === false;
+    const bNa = b.is_eligible === false;
+    if (aNa && !bNa) return 1;
+    if (!aNa && bNa) return -1;
+    return (a.rank || 999) - (b.rank || 999);
+  });
+
+  sortedCandidates.forEach((c, idx) => {
+    // ─── NA candidate: stripped-down card with prominent reason ───
+    if (c.is_eligible === false) {
+      const reason = c.eligibility_reason || c.justification ||
+                     "Candidate did not meet eligibility criteria.";
+      html += `<div class="candidate-card na-card" id="card-${idx}">
+        <div class="card-header">
+          <div class="rank-badge na-badge">N/A</div>
+          <div class="card-info">
+            <div class="card-name">${c.name || 'Candidate'}</div>
+            <div class="card-meta">${(c.job_titles && c.job_titles[0]) || '—'} &middot; ${c.experience_years || 0}y exp &middot; ${c.education_level || 'n/a'}</div>
+          </div>
+          <div class="card-score">
+            <div class="na-label">NOT APPLICABLE</div>
+          </div>
+        </div>
+        <div class="na-reason-box">
+          <div class="na-reason-title">Why not applicable</div>
+          <div class="na-reason-text">${reason}</div>
+        </div>
+      </div>`;
+      return;
+    }
+
     const rankClass = c.rank <= 3 ? `rank-${c.rank}` : "rank-other";
     const scoreClass = getScoreClass(c.overall_score);
 

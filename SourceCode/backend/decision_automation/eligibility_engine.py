@@ -265,7 +265,13 @@ def check_eligibility(
             details=f"Resume from unrelated profession. {prof_reason}",
         ))
         is_eligible = False
-        fail_reason = f"Unrelated profession ({kw_str})"
+        if matched_kw:
+            fail_reason = (
+                f"Profession mismatch: the candidate's background ({kw_str}) "
+                f"is not related to this role."
+            )
+        else:
+            fail_reason = f"Profession mismatch: {prof_reason}"
     else:
         rules_fired.append(RuleFiring(
             rule_name="UnrelatedProfessionRule",
@@ -306,7 +312,11 @@ def check_eligibility(
                 details=f"Zero overlap with {len(resume.skills)} listed skills.",
             ))
             is_eligible = False
-            fail_reason = f"Zero skill overlap (0/{len(jd_skills_lower)})"
+            fail_reason = (
+                f"Zero skill match: none of the {len(jd_skills_lower)} required skills "
+                f"are present in the resume (the candidate has {len(resume.skills)} listed skills, "
+                f"none overlapping)."
+            )
         else:
             rules_fired.append(RuleFiring(
                 rule_name="SkillOverlapRule",
@@ -315,13 +325,47 @@ def check_eligibility(
                 details="Will be scored on D1.",
             ))
 
-    # ─── Rule 3: Experience (always pass) ─────────────────────
-    if is_eligible:
+    # ─── Rule 3: Experience floor with 10% tolerance ──────────
+    # Per the spec: candidate must have at least (jd_min_exp - tolerance) years,
+    # where tolerance = max(1, jd_min_exp * 0.10) rounded down.
+    # Examples:
+    #   JD requires 10y → tolerance 1y → 9y candidate OK, 8y candidate NA
+    #   JD requires 5y  → tolerance 1y → 4y candidate OK, 3y candidate NA
+    #   JD requires 15y → tolerance 1y (1.5 rounds down) → 14y OK, 13y NA
+    if is_eligible and jd_min_experience > 0:
+        import math
+        tolerance = max(1.0, math.floor(jd_min_experience * 0.10))
+        floor = jd_min_experience - tolerance
+        if resume.experience_years < floor:
+            rules_fired.append(RuleFiring(
+                rule_name="ExperienceRule",
+                condition=f"exp={resume.experience_years}y, required={jd_min_experience}y (tolerance={tolerance:.0f}y, floor={floor:.0f}y)",
+                result="FAIL",
+                details=(
+                    f"Candidate has {resume.experience_years:.0f} year(s) of experience; "
+                    f"the role requires at least {jd_min_experience:.0f} years "
+                    f"(with a tolerance of {tolerance:.0f} year, candidates below "
+                    f"{floor:.0f} years are not applicable)."
+                ),
+            ))
+            is_eligible = False
+            fail_reason = (
+                f"Insufficient experience: candidate has {resume.experience_years:.0f}y "
+                f"but the role requires {jd_min_experience:.0f}y (minimum acceptable: {floor:.0f}y)."
+            )
+        else:
+            rules_fired.append(RuleFiring(
+                rule_name="ExperienceRule",
+                condition=f"exp={resume.experience_years}y, required={jd_min_experience}y",
+                result="PASS",
+                details=f"Within {tolerance:.0f}-year tolerance window. Will be scored on D2.",
+            ))
+    elif is_eligible:
         rules_fired.append(RuleFiring(
             rule_name="ExperienceRule",
-            condition=f"exp={resume.experience_years}y, required={jd_min_experience}y",
+            condition="No experience requirement specified",
             result="PASS",
-            details="No rejection — handled via D2 scoring.",
+            details="Will be scored on D2.",
         ))
 
     # ─── Rule 4: Education (specialized stream + 2-level gap) ─
@@ -359,10 +403,36 @@ def check_eligibility(
                 details=f"Specialized {jd_stream} degree required.",
             ))
             is_eligible = False
-            fail_reason = f"Wrong education stream ({candidate_stream or 'general'} vs {jd_stream})"
+            fail_reason = (
+                f"Wrong education stream: the role requires a {jd_stream} degree, "
+                f"but the candidate's background is {candidate_stream or 'general / non-specialised'}."
+            )
         elif required_edu_ord > 0 and candidate_edu_ord > 0:
             gap = required_edu_ord - candidate_edu_ord
-            if gap >= 2:
+
+            # ─── Strict floor for Masters / PhD requirements ──
+            # If the JD asks for Masters (ordinal 4) or above, candidate must
+            # have Masters or above. Any gap → NA. This matches the spec
+            # "Masters required → only Masters/PhD eligible".
+            MASTERS_ORDINAL = 4  # EDUCATION_ORDINAL: PhD=5, Masters=4, Bachelors=3, ...
+            if required_edu_ord >= MASTERS_ORDINAL and gap >= 1:
+                rules_fired.append(RuleFiring(
+                    rule_name="EducationLevelRule",
+                    condition=f"JD requires {jd_min_education}+; candidate has only {resume.education_level}",
+                    result="FAIL",
+                    details=(
+                        f"The role requires a {jd_min_education} degree or higher. "
+                        f"Candidate's highest qualification is {resume.education_level}, "
+                        f"which does not meet the threshold."
+                    ),
+                ))
+                is_eligible = False
+                fail_reason = (
+                    f"Education below requirement: the role asks for {jd_min_education} "
+                    f"or higher, but the candidate has {resume.education_level}."
+                )
+            elif gap >= 2:
+                # Existing rule for non-Masters JDs: 2+ level gap is too far.
                 rules_fired.append(RuleFiring(
                     rule_name="EducationLevelRule",
                     condition=f"Gap of {gap} levels below requirement",
@@ -370,7 +440,11 @@ def check_eligibility(
                     details=f"Significant education gap ({resume.education_level} vs {jd_min_education}).",
                 ))
                 is_eligible = False
-                fail_reason = f"Education too low ({resume.education_level} vs {jd_min_education})"
+                fail_reason = (
+                    f"Education too low: the role requires {jd_min_education}, "
+                    f"but the candidate has {resume.education_level} "
+                    f"(a {gap}-level shortfall)."
+                )
             else:
                 rules_fired.append(RuleFiring(
                     rule_name="EducationLevelRule",
