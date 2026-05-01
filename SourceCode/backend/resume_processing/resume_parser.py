@@ -39,6 +39,7 @@ class ParsedResume:
     job_titles: list[str] = field(default_factory=list)
     notice_period_days: int = 90  # default assumption
     certifications: list[str] = field(default_factory=list)
+    career_gaps: list[dict] = field(default_factory=list)  # gaps between roles >= 12 months
     summary: str = ""
 
 
@@ -755,6 +756,173 @@ def extract_notice_period(text: str) -> int:
     return 90
 
 
+def extract_certifications(text: str, certifications_section: str = "") -> list[str]:
+    """Extract professional certifications from the resume.
+
+    Looks for well-known certification patterns (industry-standard names) AND
+    free-form lines from a 'Certifications' section. Returns a deduplicated
+    list of certification names found.
+
+    Search priority:
+      1. The dedicated CERTIFICATIONS section if present (each line is a cert).
+      2. Body-text matching against a curated list of well-known certs.
+      3. Generic 'X Certified' / 'Certified X' patterns.
+
+    The Misc scorer uses len(certifications) as a reward signal.
+    """
+    found = set()
+
+    # ─── Pass 1: well-known cert patterns anywhere in the resume ──
+    # These are the most common professional certifications we see.
+    KNOWN_CERTS = [
+        # Cloud
+        ("AWS Certified", r"(?i)\baws\s+certified(?:\s+\w+){0,4}"),
+        ("AWS Solutions Architect", r"(?i)\baws\s+(?:solutions?\s+)?architect"),
+        ("Azure Certified", r"(?i)\bazure\s+(?:certified|fundamentals|administrator|architect|engineer)"),
+        ("GCP Certified", r"(?i)\bgcp\s+(?:certified|professional|associate)|google\s+cloud\s+(?:certified|professional)"),
+        # Project / Scrum / Agile
+        ("PMP", r"(?i)\bpmp\b|project\s+management\s+professional"),
+        ("PRINCE2", r"(?i)\bprince2\b"),
+        ("CSM", r"(?i)\bcsm\b|certified\s+scrum\s+master"),
+        ("CSPO", r"(?i)\bcspo\b|certified\s+scrum\s+product\s+owner"),
+        ("SAFe", r"(?i)\bsafe(?:\s+agilist|\s+practitioner)?\b"),
+        # Testing / QA
+        ("ISTQB", r"(?i)\bistqb\b"),
+        ("CSTE", r"(?i)\bcste\b"),
+        # Banking / Finance
+        ("CFA", r"(?i)\bcfa\b"),
+        ("FRM", r"(?i)\bfrm\b"),
+        ("CPA", r"(?i)\bcpa\b"),
+        ("Calypso Certified", r"(?i)\bcalypso\s+(?:certified|certification)"),
+        # IT / Security
+        ("CISSP", r"(?i)\bcissp\b"),
+        ("CISA", r"(?i)\bcisa\b"),
+        ("CompTIA", r"(?i)\bcomptia\s+(?:a\+|network\+|security\+)"),
+        ("CCNA", r"(?i)\bccna\b"),
+        ("CCNP", r"(?i)\bccnp\b"),
+        # Data
+        ("Tableau Certified", r"(?i)\btableau\s+(?:certified|specialist|associate)"),
+        ("Power BI Certified", r"(?i)\bpower\s+bi\s+(?:certified|data\s+analyst)"),
+        ("Databricks Certified", r"(?i)\bdatabricks\s+certified"),
+        # Java / Oracle / Microsoft
+        ("OCJP", r"(?i)\bocjp\b|oracle\s+certified\s+java"),
+        ("Microsoft Certified", r"(?i)\bmicrosoft\s+certified"),
+        # Awards/recognition treated as certification-like
+        ("Six Sigma", r"(?i)\bsix\s+sigma\b|\b(?:green|black)\s+belt\b"),
+        ("ITIL", r"(?i)\bitil\b"),
+    ]
+
+    for cert_name, pattern in KNOWN_CERTS:
+        if re.search(pattern, text):
+            found.add(cert_name)
+
+    # ─── Pass 2: parse the dedicated certifications section line-by-line ──
+    if certifications_section:
+        for line in certifications_section.splitlines():
+            line = line.strip()
+            # Skip empty lines and section headers
+            if not line or len(line) < 4 or line.lower().startswith(("certif", "licens")):
+                continue
+            # Skip dates and bullets
+            cleaned = re.sub(r"^[\-•·*▪◦◆●■▲★]\s*", "", line)
+            cleaned = re.sub(r"\s*\([\d/\-]+\)\s*$", "", cleaned)  # strip "(2023)"
+            cleaned = re.sub(r"\s*[-–]\s*\d{4}\s*$", "", cleaned)  # strip "- 2023"
+            if 4 < len(cleaned) < 120:
+                # Cap to first ~80 chars to avoid grabbing entire paragraphs
+                found.add(cleaned[:80].strip())
+
+    # ─── Pass 3: generic "X Certified" / "Certified X" fallback ──
+    # Catches certifications not in the curated list. Anchored to a single line
+    # so we don't capture newlines into the cert name.
+    for m in re.finditer(r"(?i)\b(?:certified|certification)[\s:,-]+([A-Z][^\n\r]{3,40})", text):
+        candidate = m.group(1).strip()
+        # Remove trailing punctuation / continuation markers
+        candidate = re.sub(r"[.,;:].*$", "", candidate).strip()
+        # Avoid noise like "Certified by ..." or generic words
+        if candidate and not candidate.lower().startswith(("by ", "in ", "from ", "and ")):
+            found.add(candidate[:50])
+
+    # Limit to 15 to avoid runaway counts
+    return sorted(found)[:15]
+
+
+def detect_career_gaps(text: str, experience_section: str = "",
+                        threshold_months: int = 12) -> list[dict]:
+    """Detect gaps between consecutive work experience entries.
+
+    Walks date ranges in chronological order. Any gap larger than `threshold_months`
+    months (default 12 = 1 year) between the END of one role and the START of the
+    next is flagged.
+
+    Returns a list of dicts: {"from_year": int, "to_year": int, "gap_months": int}.
+    The Misc scorer penalises candidates with one or more such gaps.
+
+    Note: this only catches gaps BETWEEN roles. Time before the first role or
+    after the last role is not counted as a gap (those are pre-career and
+    current-unemployment respectively).
+    """
+    search_text = experience_section or text
+    if not search_text:
+        return []
+
+    # Reuse the existing month+year range regex
+    MONTH = r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)"
+    range_re = re.compile(
+        rf"({MONTH})[\s\-]*?(\d{{4}})\s*[-–—]\s*"
+        rf"(?:({MONTH})[\s\-]*?(\d{{4}})|(Present|Ongoing|Current|Now))",
+        re.IGNORECASE,
+    )
+
+    MONTH_NUM = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
+    }
+
+    ranges = []  # list of (start_month_index, end_month_index)
+    for m in range_re.finditer(search_text):
+        # Skip education-context dates
+        if _is_education_context(search_text, m.start(), m.end()):
+            continue
+
+        start_mo = MONTH_NUM.get(m.group(1).lower(), 1)
+        start_yr = int(m.group(2))
+
+        if m.group(3):
+            end_mo = MONTH_NUM.get(m.group(3).lower(), 12)
+            end_yr = int(m.group(4))
+        else:
+            # Present/Ongoing
+            end_mo = 12
+            end_yr = 2026
+
+        if not (1990 <= start_yr <= 2030):
+            continue
+
+        start_idx = start_yr * 12 + start_mo
+        end_idx = end_yr * 12 + end_mo
+        if end_idx >= start_idx:
+            ranges.append((start_idx, end_idx))
+
+    if len(ranges) < 2:
+        return []
+
+    # Sort by start, then walk and find gaps
+    ranges.sort()
+    gaps = []
+    prev_end = ranges[0][1]
+    for start, end in ranges[1:]:
+        gap = start - prev_end
+        if gap >= threshold_months:
+            gaps.append({
+                "from_year": prev_end // 12,
+                "to_year": start // 12,
+                "gap_months": gap,
+            })
+        prev_end = max(prev_end, end)
+
+    return gaps
+
+
 def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
     """
     Main entry point: parse a resume file into structured data.
@@ -827,6 +995,15 @@ def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
     else:
         clean_experience_text = raw_text
 
+    # Extract certifications from the dedicated section (if present) plus
+    # body-text scanning. The Misc scorer rewards each cert.
+    certifications_section = sections.get("certifications", "")
+    certifications = extract_certifications(raw_text, certifications_section)
+
+    # Detect career gaps — gaps of 12+ months between roles will trigger
+    # a Misc penalty. Walks date ranges in the cleaned experience text.
+    career_gaps = detect_career_gaps(raw_text, clean_experience_text)
+
     resume = ParsedResume(
         raw_text=raw_text,
         name=clean_output_text(name)[:100] or "Unknown",
@@ -839,7 +1016,8 @@ def parse_resume(file_bytes: bytes, filename: str) -> ParsedResume:
         education_text=clean_output_text(education_text)[:1000],
         job_titles=[clean_output_text(title) for title in extract_job_titles(raw_text)],
         notice_period_days=extract_notice_period(raw_text),
-        certifications=[],
+        certifications=certifications,
+        career_gaps=career_gaps,
         summary=clean_output_text(sections.get("summary", ""))[:500],
     )
 

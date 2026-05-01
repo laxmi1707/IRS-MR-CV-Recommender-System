@@ -28,8 +28,8 @@ CATEGORY_WEIGHTS = {
         "technical_skills": 0.35,
         "experience": 0.25,
         "education": 0.20,
-        "availability": 0.10,
-        "miscellaneous": 0.10,
+        "miscellaneous": 0.12,
+        "availability": 0.08,
     },
     "contract": {
         "technical_skills": 0.25,
@@ -71,60 +71,136 @@ CATEGORY_WEIGHTS = {
 DEFAULT_WEIGHTS_LIST = [0.35, 0.25, 0.20, 0.10, 0.10]
 
 
-def detect_job_category(jd_title: str, jd_text: str) -> str:
-    """Infer job category from JD for weight lookup."""
-    combined = (jd_title + " " + jd_text).lower()
+def detect_job_category(jd_title: str, jd_text: str, sbert_model=None) -> str:
+    """Infer job category from JD for weight lookup.
 
-    if any(kw in combined for kw in [
-        "contract", "freelance", "temporary", "6 month", "12 month",
-        "fixed term", "interim",
-    ]):
-        return "contract"
+    Two-pass approach for accuracy:
+      1. Keyword scoring with TITLE weighted 3x over body text. The title is a
+         very strong signal; body text is noisy ('management' often appears in
+         developer JDs as 'team management' or 'task management', and that
+         shouldn't flip the category to 'management').
+      2. SBERT semantic fallback when keyword scoring is ambiguous (top-2 scores
+         are tied or both very low). Compares the JD title to canonical
+         category descriptions and picks the closest match.
 
-    if any(kw in combined for kw in [
-        "entry level", "entry-level", "fresh graduate", "fresher",
-        "junior", "associate", "trainee", "intern",
-    ]) and "senior" not in combined:
-        return "entry_level"
+    The previous implementation used `any(kw in combined for kw in [...])` —
+    a single substring hit anywhere in the JD flipped the category. That's
+    why 'Software Test Engineer' was being detected as 'management' (because
+    body text mentioned 'manage' or 'management'). The new scoring system
+    requires the title to corroborate the category.
+    """
+    title_lower = (jd_title or "").lower().strip()
+    body_lower = (jd_text or "").lower()
 
-    if any(kw in combined for kw in [
-        "head of", "director", "vp ", "vice president", "chief",
-        "cto", "ceo", "cfo", "coo", "executive",
-        "program manager", "general manager", "operations manager",
-    ]):
-        return "management"
+    # Category keyword bundles — same content as before, but now scored
+    # rather than first-match-wins.
+    CATEGORY_KEYWORDS = {
+        "contract": [
+            "contract", "freelance", "temporary", "6 month", "12 month",
+            "fixed term", "interim",
+        ],
+        "entry_level": [
+            "entry level", "entry-level", "fresh graduate", "fresher",
+            "junior", "trainee", "intern",
+        ],
+        "management": [
+            "head of", "director", "vp ", "vice president", "chief",
+            "cto", "ceo", "cfo", "coo", "executive",
+            "program manager", "general manager", "operations manager",
+            "engineering manager",
+        ],
+        "data_science": [
+            "data scientist", "data science", "machine learning", "ml engineer",
+            "data analyst", "analytics", "deep learning", "ai engineer",
+            "data engineer", "nlp", "computer vision",
+        ],
+        "software_engineering": [
+            # Strong title signals — these are the canonical job title patterns
+            "software engineer", "test engineer", "qa engineer",
+            "developer", "backend", "frontend", "full stack", "full-stack",
+            "devops", "sre", "platform engineer", "automation engineer",
+            "mobile developer", "ios developer", "android developer",
+            "technical analyst", "systems engineer", "cloud engineer",
+            "web developer", "application developer", "site reliability",
+            "test analyst", "qa lead", "test lead", "automation tester",
+            "calypso developer", "calypso", "uat tester",
+            "test manager", "uat manager", "uat test manager", "qa manager",
+            "test architect", "principal qa",
+        ],
+        "finance": [
+            "finance", "accounting", "banking analyst", "audit", "risk analyst",
+            "compliance", "investment analyst", "actuary", "fintech",
+            "quantitative analyst", "financial analyst", "treasury",
+            "controller", "hedge fund",
+        ],
+    }
 
-    if any(kw in combined for kw in [
-        "data scien", "machine learning", "ml engineer", "data analyst",
-        "analytics", "deep learning", "ai engineer", "data engineer",
-        "nlp", "computer vision",
-    ]):
-        return "data_science"
+    # Senior-suppression: if title contains 'senior', drop entry_level
+    is_senior = "senior" in title_lower
 
-    if any(kw in combined for kw in [
-        "software engineer", "developer", "backend", "frontend",
-        "full stack", "full-stack", "devops", "sre", "platform engineer",
-        "quality assurance", "qa ", "test engineer", "automation engineer",
-        "mobile developer", "ios developer", "android developer",
-        "technical analyst", "systems engineer", "cloud engineer",
-        "web developer", "application developer", "site reliability",
-    ]):
-        return "software_engineering"
+    # Title-weighted scoring
+    scores = {}
+    for category, kws in CATEGORY_KEYWORDS.items():
+        score = 0
+        for kw in kws:
+            if kw in title_lower:
+                score += 3        # title hit — strong signal
+            elif kw in body_lower:
+                score += 1        # body hit — weak signal
+        if is_senior and category == "entry_level":
+            score = 0  # explicit guard
+        scores[category] = score
 
-    if any(kw in combined for kw in [
-        "finance", "accounting", "banking", "audit", "risk analyst",
-        "compliance", "investment", "actuary", "fintech",
-        "quantitative analyst", "financial analyst", "treasury",
-        "controller", "foreign exchange", "hedge fund",
-    ]):
-        return "finance"
+    # Pick highest-scoring category
+    best_category = max(scores, key=scores.get)
+    best_score = scores[best_category]
+
+    # If we have a clear winner from the title (≥3 means at least one title hit),
+    # trust the keyword pass.
+    title_hit_threshold = 3
+    if best_score >= title_hit_threshold:
+        return best_category
+
+    # ─── SBERT semantic fallback ────────────────────────────────
+    # Only used when keyword scoring is weak (no title hit).
+    # Compares JD title against canonical category descriptions.
+    if sbert_model is not None and title_lower:
+        try:
+            import numpy as np
+            CATEGORY_DESCRIPTIONS = {
+                "software_engineering": "software developer engineer programmer who writes and tests code, builds applications, automates testing, develops backend or frontend systems",
+                "data_science": "data scientist machine learning engineer who builds models analyzes data and uses statistics and AI",
+                "management": "executive leader manager director who runs teams sets strategy and oversees operations",
+                "finance": "financial analyst accountant banker who works with money trading audit risk compliance",
+                "entry_level": "junior trainee intern fresh graduate with little professional experience",
+                "contract": "short-term contractor freelance worker on fixed-term temporary engagement",
+            }
+            title_emb = sbert_model.encode(title_lower)
+            best_cat = "default"
+            best_sim = -1.0
+            for cat, desc in CATEGORY_DESCRIPTIONS.items():
+                desc_emb = sbert_model.encode(desc)
+                sim = float(np.dot(title_emb, desc_emb) / (
+                    np.linalg.norm(title_emb) * np.linalg.norm(desc_emb) + 1e-8))
+                if sim > best_sim:
+                    best_sim = sim
+                    best_cat = cat
+            # Only trust SBERT if similarity is meaningful
+            if best_sim >= 0.30:
+                return best_cat
+        except Exception:
+            pass
+
+    # If we have a body-text best with at least 2 hits, accept it
+    if best_score >= 2:
+        return best_category
 
     return "default"
 
 
-def get_optimized_weights(jd_title: str, jd_text: str):
+def get_optimized_weights(jd_title: str, jd_text: str, sbert_model=None):
     """Get GA-optimized weights for detected job category."""
-    category = detect_job_category(jd_title, jd_text)
+    category = detect_job_category(jd_title, jd_text, sbert_model=sbert_model)
     weights = CATEGORY_WEIGHTS.get(category, CATEGORY_WEIGHTS["default"])
     return weights, category
 

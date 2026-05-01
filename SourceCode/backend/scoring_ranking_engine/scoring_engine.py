@@ -239,7 +239,10 @@ def score_technical_skills(resume, jd):
 
     # Level 1: Soft skill / domain equivalence matching (lexical)
     soft_skill_matched = set()
-    for jd_skill in missing:
+    # Snapshot the set before mutating it inside the loop — iterating
+    # `missing` directly while calling missing.discard() raises
+    # RuntimeError: Set changed size during iteration.
+    for jd_skill in list(missing):
         for resume_skill in resume_skills_set:
             equiv_score = _soft_skill_match(jd_skill, resume_skill)
             if equiv_score >= 0.75:
@@ -305,13 +308,18 @@ def score_technical_skills(resume, jd):
             overall_sim = _cosine_similarity(jd_emb, res_emb)
         else:
             overall_sim = _token_similarity(jd.description, resume.raw_text)
-        relevance_boost = max(0, overall_sim) * 0.25
+        relevance_boost = max(0, overall_sim) * 0.15  # was 0.25
 
-    # Final: 50% skills + relevance + apriori
-    final_score = (combined_score * 0.50) + relevance_boost + apriori_bonus
+    # Final formula: skills carry the dominant signal.
+    # - 75% weight on the actual skill-match ratio (was 50%).
+    # - 15% relevance boost (was 25%) — softens harsh penalties for partial fits.
+    # - Apriori bonus retained for implied skills.
+    # The floor was 0.40 — now 0.30, so an actual zero-skill candidate
+    # can't artificially clear 40% via relevance alone.
+    final_score = (combined_score * 0.75) + relevance_boost + apriori_bonus
 
-    # Floor at 0.40 — aligns with GT min of 40%
-    final_score = max(0.40, min(1.0, final_score))
+    # Floor at 0.30 — keeps numerical stability without inflating weak matches
+    final_score = max(0.30, min(1.0, final_score))
 
     explanation = (
         f"Skills: {len(matched)} keyword + {len(soft_skill_matched)} semantic equiv + "
@@ -429,9 +437,27 @@ def score_availability(resume, jd):
 # D5: Miscellaneous (SBERT title + relevance, floor 50%)
 # ═══════════════════════════════════════════════════════════════
 def score_miscellaneous(resume, jd):
+    """Miscellaneous dimension — combines four signals:
+
+      1. Job title alignment vs the JD title (SBERT cosine similarity).
+      2. Resume↔JD overall relevance (SBERT cosine on summary/raw vs description).
+      3. Certifications reward — each professional certification adds a small bonus
+         (capped). A candidate with 3 industry-standard certs (PMP, CSM, AWS) earns
+         the full +0.20 boost.
+      4. Career-gap penalty — gaps ≥12 months between roles cost the candidate
+         (capped at -0.20 even with multiple gaps).
+
+    Final formula:
+        0.40 * title + 0.30 * relevance + cert_bonus(0..0.20) - gap_penalty(0..0.20)
+    Bounded to [0.30, 1.0].
+
+    Was previously 0.50 * title + 0.50 * relevance with a 0.50 floor — that
+    formula ignored certifications and career gaps entirely.
+    """
     components = []
     sbert_model = get_sbert_model()
 
+    # ─── Component 1: Title alignment ──────────────────────
     if resume.job_titles and jd.title:
         if sbert_model:
             all_titles = resume.job_titles + [jd.title]
@@ -450,11 +476,11 @@ def score_miscellaneous(resume, jd):
                 default="",
             )
             best_sim = _token_similarity(best_title, jd.title)
-
         components.append(("title", max(0.0, best_sim), best_title))
     else:
         components.append(("title", 0.55, "none"))
 
+    # ─── Component 2: Overall resume↔JD relevance ──────────
     summary = resume.summary or resume.raw_text[:500]
     if summary and jd.description:
         if sbert_model:
@@ -470,13 +496,40 @@ def score_miscellaneous(resume, jd):
     title_score = components[0][1]
     rel_score = components[1][1]
 
-    final = max(0.50, 0.5 * title_score + 0.5 * rel_score)
+    # ─── Component 3: Certifications reward ────────────────
+    # Each cert adds 0.05, capped at 0.20 (4+ certs hit the cap).
+    cert_count = len(resume.certifications) if resume.certifications else 0
+    cert_bonus = min(0.20, cert_count * 0.05)
 
-    explanation = (
-        f"Title: {title_score:.0%} ('{components[0][2]}'). "
-        f"Relevance: {rel_score:.0%}."
-    )
-    return min(1.0, final), explanation
+    # ─── Component 4: Career-gap penalty ───────────────────
+    # Each gap ≥12 months costs 0.05, capped at -0.20.
+    gap_count = len(resume.career_gaps) if resume.career_gaps else 0
+    gap_penalty = min(0.20, gap_count * 0.05)
+
+    # Final composite
+    final = (0.40 * title_score) + (0.30 * rel_score) + cert_bonus - gap_penalty
+    final = max(0.30, min(1.0, final))
+
+    # Build an explanation that surfaces all four components
+    parts = [
+        f"Title: {title_score:.0%} ('{components[0][2]}')",
+        f"Relevance: {rel_score:.0%}",
+    ]
+    if cert_count:
+        # Show first few cert names
+        sample = ", ".join(resume.certifications[:3])
+        if cert_count > 3:
+            sample += f" +{cert_count - 3}"
+        parts.append(f"Certifications +{cert_bonus:.0%} ({cert_count}: {sample})")
+    if gap_count:
+        gap_summary = "; ".join(
+            f"{g['from_year']}–{g['to_year']} ({g['gap_months']}mo)"
+            for g in resume.career_gaps[:3]
+        )
+        parts.append(f"Career gap penalty -{gap_penalty:.0%} ({gap_count} gap{'s' if gap_count > 1 else ''}: {gap_summary})")
+
+    explanation = ". ".join(parts) + "."
+    return final, explanation
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -500,7 +553,7 @@ def rank_candidates(resumes, jd, custom_weights=None, eligibility_results=None):
         weights = custom_weights
         ga_category = "custom"
     else:
-        weights, ga_category = get_optimized_weights(jd.title, jd.description)
+        weights, ga_category = get_optimized_weights(jd.title, jd.description, sbert_model=sbert_model)
 
     pq = []
 
