@@ -1,0 +1,49 @@
+<svg width="1200" height="420" viewBox="0 0 1200 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FBFF"/>
+      <stop offset="1" stop-color="#FFF5EB"/>
+    </linearGradient>
+    <linearGradient id="navy" x1="140" y1="50" x2="330" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2A5E98"/>
+      <stop offset="1" stop-color="#163E73"/>
+    </linearGradient>
+    <linearGradient id="green" x1="230" y1="30" x2="330" y2="150" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#43B36A"/>
+      <stop offset="1" stop-color="#237E60"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="280" y1="130" x2="350" y2="220" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F1D47A"/>
+      <stop offset="1" stop-color="#C8982D"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="1200" height="420" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#102745" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <rect x="32" y="28" width="1136" height="360" rx="28" fill="url(#bg)" filter="url(#shadow)"/>
+  <rect x="32" y="28" width="1136" height="360" rx="28" stroke="#E87621" stroke-width="4"/>
+
+  <circle cx="220" cy="188" r="88" fill="white" stroke="url(#navy)" stroke-width="18"/>
+  <path d="M225 101L330 65L302 174" fill="url(#green)"/>
+  <path d="M171 241L221 188L267 225L303 175" stroke="white" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M171 241L221 188L267 225L303 175" stroke="url(#green)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="171" cy="241" r="11" fill="#163E73"/>
+  <circle cx="221" cy="188" r="11" fill="#237E60"/>
+  <circle cx="267" cy="225" r="11" fill="#D7A73A"/>
+  <circle cx="303" cy="175" r="11" fill="#31A060"/>
+  <path d="M193 230V168M221 230V148M247 230V187" stroke="url(#navy)" stroke-width="15" stroke-linecap="round"/>
+  <circle cx="323" cy="220" r="32" fill="white" stroke="url(#gold)" stroke-width="10"/>
+  <path d="M309 223L320 236L340 208" stroke="url(#green)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M154 266L118 315" stroke="url(#navy)" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="144" cy="270" r="15" fill="url(#navy)"/>
+  <path d="M126 183L165 130" stroke="#2B7D69" stroke-width="10" stroke-linecap="round" opacity="0.85"/>
+  <circle cx="121" cy="183" r="12" fill="#2B7D69"/>
+  <circle cx="168" cy="126" r="9" fill="#D4A437"/>
+
+  <text x="410" y="170" fill="#15467E" font-family="Arial, Helvetica, sans-serif" font-size="118" font-weight="700" letter-spacing="3">ICRS</text>
+  <text x="414" y="225" fill="#868C95" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="700">INTELLIGENT CANDIDATE</text>
+  <text x="414" y="270" fill="#868C95" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="700">RANKING SYSTEM</text>
+  <text x="414" y="325" fill="#15467E" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700">USER GUIDE</text>
+  <text x="950" y="350" fill="#355A88" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600">GROUP 04 | NUS-ISS PRACTICE MODULE</text>
+</svg>

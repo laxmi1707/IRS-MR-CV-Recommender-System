@@ -1,0 +1,67 @@
+<svg width="1200" height="340" viewBox="0 0 1200 340" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="stepBlue" x1="0" y1="0" x2="180" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2B5F99"/>
+      <stop offset="1" stop-color="#173F73"/>
+    </linearGradient>
+    <linearGradient id="stepGreen" x1="0" y1="0" x2="180" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3EAF67"/>
+      <stop offset="1" stop-color="#237E60"/>
+    </linearGradient>
+    <linearGradient id="stepOrange" x1="0" y1="0" x2="180" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F2A53C"/>
+      <stop offset="1" stop-color="#E87621"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="20" y="20" width="1160" height="300" rx="24" fill="#F9FAFB" stroke="#D9E0E8"/>
+
+  <g transform="translate(48 85)">
+    <rect width="160" height="100" rx="20" fill="url(#stepBlue)"/>
+    <text x="20" y="34" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">1. Input</text>
+    <text x="20" y="62" fill="#D8E6F8" font-family="Arial, Helvetica, sans-serif" font-size="14">Job title, JD text,</text>
+    <text x="20" y="82" fill="#D8E6F8" font-family="Arial, Helvetica, sans-serif" font-size="14">optional resumes</text>
+  </g>
+
+  <g transform="translate(246 85)">
+    <rect width="160" height="100" rx="20" fill="url(#stepGreen)"/>
+    <text x="20" y="34" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">2. Vector DB</text>
+    <text x="20" y="62" fill="#E2F6EA" font-family="Arial, Helvetica, sans-serif" font-size="14">Store, deduplicate,</text>
+    <text x="20" y="82" fill="#E2F6EA" font-family="Arial, Helvetica, sans-serif" font-size="14">retrieve candidates</text>
+  </g>
+
+  <g transform="translate(444 85)">
+    <rect width="160" height="100" rx="20" fill="url(#stepBlue)"/>
+    <text x="20" y="34" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">3. Eligibility</text>
+    <text x="20" y="62" fill="#D8E6F8" font-family="Arial, Helvetica, sans-serif" font-size="14">Filter NA profiles</text>
+    <text x="20" y="82" fill="#D8E6F8" font-family="Arial, Helvetica, sans-serif" font-size="14">before scoring</text>
+  </g>
+
+  <g transform="translate(642 85)">
+    <rect width="160" height="100" rx="20" fill="url(#stepOrange)"/>
+    <text x="20" y="34" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">4. Scoring</text>
+    <text x="20" y="62" fill="#FFF0DC" font-family="Arial, Helvetica, sans-serif" font-size="14">Skills, experience,</text>
+    <text x="20" y="82" fill="#FFF0DC" font-family="Arial, Helvetica, sans-serif" font-size="14">education, availability</text>
+  </g>
+
+  <g transform="translate(840 85)">
+    <rect width="160" height="100" rx="20" fill="url(#stepBlue)"/>
+    <text x="20" y="34" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">5. Ranking</text>
+    <text x="20" y="62" fill="#D8E6F8" font-family="Arial, Helvetica, sans-serif" font-size="14">Best-first ordering</text>
+    <text x="20" y="82" fill="#D8E6F8" font-family="Arial, Helvetica, sans-serif" font-size="14">with explanations</text>
+  </g>
+
+  <path d="M210 135H244" stroke="#98A7B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M408 135H442" stroke="#98A7B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M606 135H640" stroke="#98A7B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M804 135H838" stroke="#98A7B8" stroke-width="8" stroke-linecap="round"/>
+  <path d="M234 135L218 124V146L234 135Z" fill="#98A7B8"/>
+  <path d="M432 135L416 124V146L432 135Z" fill="#98A7B8"/>
+  <path d="M630 135L614 124V146L630 135Z" fill="#98A7B8"/>
+  <path d="M828 135L812 124V146L828 135Z" fill="#98A7B8"/>
+
+  <text x="50" y="255" fill="#334155" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700">Matching modes:</text>
+  <text x="50" y="284" fill="#475569" font-family="Arial, Helvetica, sans-serif" font-size="16">• No upload: rank against all resumes already in Chroma DB</text>
+  <text x="50" y="308" fill="#475569" font-family="Arial, Helvetica, sans-serif" font-size="16">• Upload + checkbox checked: include existing CVs and uploaded CVs</text>
+  <text x="610" y="284" fill="#475569" font-family="Arial, Helvetica, sans-serif" font-size="16">• Upload + checkbox unchecked: rank only uploaded CVs</text>
+</svg>
