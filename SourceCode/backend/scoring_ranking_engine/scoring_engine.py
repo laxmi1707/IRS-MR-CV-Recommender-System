@@ -150,6 +150,7 @@ class JobDescription:
     description: str = ""
     required_skills: list = field(default_factory=list)
     min_experience_years: float = 0.0
+    max_experience_years: float = 0.0  # 0 means "no upper bound"
     required_education: str = "Bachelors"
     max_notice_period_days: int = 90
 

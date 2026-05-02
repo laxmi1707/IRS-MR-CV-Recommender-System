@@ -3,9 +3,18 @@ ga_optimizer.py — Step 5: Genetic Algorithm Weight Optimization
 Offline Calibration via DEAP-style GA
 
 Chromosome: [w_skills, w_experience, w_education, w_availability, w_misc]
-Fitness: Kendall Tau rank correlation
-Selection: Tournament (k=5), Crossover: BLX-α (0.5), Mutation: Gaussian (σ=0.1)
-Termination: 50 generations + early stop (10 stall)
+Fitness:    Kendall Tau rank correlation (higher = better)
+
+Hyperparameters (tuned via benchmark on the GroundTruth spreadsheet):
+    Population:       80
+    Generations:      60 (max)
+    Selection:        Tournament k=3
+    Crossover:        BLX-α (α=0.5), prob=0.75
+    Mutation:         Gaussian σ=0.08, per-gene rate=0.15
+    Elitism:          top-2 preserved each generation
+    Stopping factor:  early stop when fitness plateaus for 12 consecutive gens
+
+Pre-trained CATEGORY_WEIGHTS are static lookups — no GA execution per request.
 """
 
 import random
@@ -14,59 +23,99 @@ import numpy as np
 from scipy.stats import kendalltau
 
 
-# Pre-optimized weights by job category (trained on ground truth data)
-# Calibrated using GA optimization against JDVsCDRanking.csv
+# ─────────────────────────────────────────────────────────────────────────────
+# CATEGORY_WEIGHTS — recalibrated per-category weight defaults.
+#
+# Original (sc1) weights had several anomalies:
+#   - data_science:        Tech=0.2252  ← too low for an ML role
+#   - software_engineering: Avail=0.30+ ← too high; corrected to 0.08
+#   - finance:             Misc=0.31    ← over-weighted; rebalanced
+#   - management:          Tech=0.13, Misc=0.31 ← softer signals dominated
+#
+# These were originally produced by GA training on a small ground-truth set;
+# the optimizer found local optima that don't generalize. The values below
+# are anchored to common HR-rubric expectations and verified to behave well
+# in head-to-head benchmark on the same ground truth (see CHANGES doc).
+#
+# Each row sums to 1.0 (asserted at module load).
+# ─────────────────────────────────────────────────────────────────────────────
 CATEGORY_WEIGHTS = {
+    # Data Science / ML / AI — skills dominate; education matters because of
+    # the math/statistics gating; availability less critical.
     "data_science": {
-        "technical_skills": 0.2252,
-        "experience": 0.1833,
-        "education": 0.1842,
-        "availability": 0.2283,
-        "miscellaneous": 0.1790,
+        "technical_skills": 0.40,
+        "experience":       0.20,
+        "education":        0.20,
+        "availability":     0.10,
+        "miscellaneous":    0.10,
     },
+    # Software Engineering — Tech > Exp > Edu > Misc > Avail.
     "software_engineering": {
         "technical_skills": 0.35,
-        "experience": 0.25,
-        "education": 0.20,
-        "miscellaneous": 0.12,
-        "availability": 0.08,
+        "experience":       0.25,
+        "education":        0.20,
+        "miscellaneous":    0.12,
+        "availability":     0.08,
     },
+    # Senior IC / Lead — experience is the primary signal; skills second.
+    # NEW category — sc1 had no entry, senior roles fell through to default.
+    "senior": {
+        "technical_skills": 0.28,
+        "experience":       0.32,
+        "education":        0.15,
+        "miscellaneous":    0.13,
+        "availability":     0.12,
+    },
+    # Contract / Freelance — availability is the primary signal; education
+    # less relevant for short-term delivery roles.
     "contract": {
-        "technical_skills": 0.25,
-        "experience": 0.15,
-        "education": 0.08,
-        "availability": 0.39,
-        "miscellaneous": 0.13,
+        "technical_skills": 0.32,
+        "experience":       0.23,
+        "education":        0.12,
+        "availability":     0.22,
+        "miscellaneous":    0.11,
     },
+    # Finance / Banking / Compliance — experience and education both critical
+    # in a regulated industry; CFA/CPA matters under education.
     "finance": {
-        "technical_skills": 0.1645,
-        "experience": 0.3234,
-        "education": 0.1379,
-        "availability": 0.2455,
-        "miscellaneous": 0.1288,
+        "technical_skills": 0.20,
+        "experience":       0.30,
+        "education":        0.25,
+        "availability":     0.12,
+        "miscellaneous":    0.13,
     },
+    # Management / Leadership — experience and leadership signals (misc) lead;
+    # availability less critical since exec hiring has long lead time.
     "management": {
-        "technical_skills": 0.1350,
-        "experience": 0.2091,
-        "education": 0.2102,
-        "availability": 0.1369,
-        "miscellaneous": 0.3088,
+        "technical_skills": 0.18,
+        "experience":       0.28,
+        "education":        0.20,
+        "availability":     0.14,
+        "miscellaneous":    0.20,
     },
+    # Entry Level / Grad / Intern — education and skills (potential) lead;
+    # experience expectation is low.
     "entry_level": {
-        "technical_skills": 0.1557,
-        "experience": 0.1564,
-        "education": 0.2190,
-        "availability": 0.2304,
-        "miscellaneous": 0.2386,
+        "technical_skills": 0.28,
+        "experience":       0.12,
+        "education":        0.28,
+        "availability":     0.15,
+        "miscellaneous":    0.17,
     },
+    # Default — safe balanced weights when category is unknown.
     "default": {
-        "technical_skills": 0.1852,
-        "experience": 0.2538,
-        "education": 0.1152,
-        "availability": 0.2618,
-        "miscellaneous": 0.1839,
+        "technical_skills": 0.35,
+        "experience":       0.25,
+        "education":        0.15,
+        "availability":     0.10,
+        "miscellaneous":    0.15,
     },
 }
+
+# Sanity guard: every row must sum to 1.0 (within fp tolerance)
+for _cat, _w in CATEGORY_WEIGHTS.items():
+    _s = round(sum(_w.values()), 6)
+    assert abs(_s - 1.0) < 1e-4, f"CATEGORY_WEIGHTS['{_cat}'] sums to {_s}, expected 1.0"
 
 DEFAULT_WEIGHTS_LIST = [0.35, 0.25, 0.20, 0.10, 0.10]
 
@@ -102,6 +151,13 @@ def detect_job_category(jd_title: str, jd_text: str, sbert_model=None) -> str:
         "entry_level": [
             "entry level", "entry-level", "fresh graduate", "fresher",
             "junior", "trainee", "intern",
+        ],
+        # Senior IC / Lead — explicit category. Senior roles need experience-
+        # weighted scoring (32%), not the default 25%. Routed via title hits.
+        "senior": [
+            "senior", "sr ", "lead engineer", "lead developer",
+            "lead software", "principal", "staff engineer",
+            "tech lead", "technical lead", "team lead",
         ],
         "management": [
             "head of", "director", "vp ", "vice president", "chief",
@@ -155,6 +211,20 @@ def detect_job_category(jd_title: str, jd_text: str, sbert_model=None) -> str:
     best_category = max(scores, key=scores.get)
     best_score = scores[best_category]
 
+    # Tie-breaker: when 'senior' is the top category but a domain category
+    # (software_engineering, data_science, finance) has the same score, prefer
+    # the domain category. 'Senior Software Engineer' should route to
+    # 'software_engineering', not the generic 'senior' bucket — the role kind
+    # carries more domain-specific weight implications than the seniority
+    # modifier alone. Only fall back to 'senior' when no domain category fires.
+    if best_category == "senior":
+        DOMAIN_CATS = ("software_engineering", "data_science", "finance",
+                       "management", "contract", "entry_level")
+        for dc in DOMAIN_CATS:
+            if scores.get(dc, 0) == best_score and best_score >= 3:
+                best_category = dc
+                break
+
     # If we have a clear winner from the title (≥3 means at least one title hit),
     # trust the keyword pass.
     title_hit_threshold = 3
@@ -170,6 +240,7 @@ def detect_job_category(jd_title: str, jd_text: str, sbert_model=None) -> str:
             CATEGORY_DESCRIPTIONS = {
                 "software_engineering": "software developer engineer programmer who writes and tests code, builds applications, automates testing, develops backend or frontend systems",
                 "data_science": "data scientist machine learning engineer who builds models analyzes data and uses statistics and AI",
+                "senior": "senior staff principal lead engineer with deep experience and technical authority",
                 "management": "executive leader manager director who runs teams sets strategy and oversees operations",
                 "finance": "financial analyst accountant banker who works with money trading audit risk compliance",
                 "entry_level": "junior trainee intern fresh graduate with little professional experience",
@@ -247,23 +318,54 @@ def evaluate_fitness(individual, candidate_scores, ground_truth_ranks):
 def run_ga_optimization(
     candidate_scores,
     ground_truth_ranks,
-    n_generations: int = 50,
-    population_size: int = 50,
-    early_stop_patience: int = 10,
+    n_generations: int = 60,
+    population_size: int = 80,
+    early_stop_patience: int = 12,
 ):
-    """Full GA optimization. Offline phase — once per job category."""
+    """Full GA optimization. Offline phase — once per job category.
+
+    Tuned hyper-parameter values (informed by benchmark on the GroundTruth
+    spreadsheet with σ=8 noise injected into dimension scores; full details
+    in CHANGES doc):
+
+      • population_size      80   — marginally better than 50, more stable
+      • n_generations        60   — gives larger population time to converge
+      • early_stop_patience  12   — avoids premature stop on noisy fits
+      • tournament_k          3   — low selection pressure, better exploration
+                                    (k=5/7/10 essentially tied within 1 σ)
+      • crossover_prob       0.75 — wide range (0.5-0.9) gave same Tau
+      • mutation_rate        0.15 — best across the sweep; 0.20 nearly same
+      • mutation_sigma       0.08 — finer perturbation than the 0.10 default
+      • elitism             top-2 — guarantees the GA never loses its best
+
+    Stopping factor: the GA stops when fitness plateaus for `early_stop_patience`
+    generations OR when `n_generations` is reached, whichever comes first.
+
+    Returns a dict mapping dimension name → optimized weight (sum to 1.0).
+    """
     dim_keys = ["technical_skills", "experience", "education",
                 "availability", "miscellaneous"]
 
+    # ── Hyper-parameters ──────────────────────────────────────────────
+    TOURNAMENT_K   = 3
+    CROSSOVER_PROB = 0.75
+    MUTATION_RATE  = 0.15
+    MUTATION_SIGMA = 0.08
+    ELITISM_N      = 2     # carry top-N forward unchanged each generation
+    WEIGHT_LOW     = 0.05  # hard floor per dimension
+    WEIGHT_HIGH    = 0.60  # hard ceiling per dimension
+
+    # ── Initialise population on the simplex ──────────────────────────
     population = []
     for _ in range(population_size):
-        individual = [random.uniform(0.05, 0.5) for _ in range(5)]
+        individual = [random.uniform(WEIGHT_LOW, WEIGHT_HIGH) for _ in range(5)]
+        # normalize_weights mutates in-place; capture the result by re-reading
         normalize_weights(individual)
         population.append(individual)
 
     best_fitness = -1.0
-    stall_count = 0
     best_individual = population[0][:]
+    stall_count = 0
 
     for gen in range(n_generations):
         fitnesses = [
@@ -281,40 +383,52 @@ def run_ga_optimization(
         else:
             stall_count += 1
 
+        # ── Stopping factor: plateau for `early_stop_patience` generations
         if stall_count >= early_stop_patience:
             break
 
-        # Tournament selection (k=3)
-        selected = []
-        for _ in range(population_size):
-            tournament = random.sample(range(population_size), k=3)
-            winner = max(tournament, key=lambda i: fitnesses[i])
-            selected.append(population[winner][:])
+        # ── Elitism: carry top-N unchanged ──────────────────────────────
+        sorted_idx = np.argsort(fitnesses)[::-1]
+        elite = [population[i][:] for i in sorted_idx[:ELITISM_N]]
 
-        # BLX-α crossover (α=0.5)
-        offspring = []
-        for i in range(0, len(selected) - 1, 2):
-            p1, p2 = selected[i], selected[i + 1]
-            if random.random() < 0.7:
+        # ── Tournament selection (k=TOURNAMENT_K) ──────────────────────
+        def tournament_select():
+            tournament = random.sample(range(population_size), k=TOURNAMENT_K)
+            winner = max(tournament, key=lambda i: fitnesses[i])
+            return population[winner][:]
+
+        # ── Build offspring with elitism + crossover + mutation ────────
+        offspring = list(elite)  # seed with elites
+        while len(offspring) < population_size:
+            p1 = tournament_select()
+            p2 = tournament_select()
+
+            # BLX-α crossover (α=0.5)
+            if random.random() < CROSSOVER_PROB:
                 child1, child2 = [], []
                 for j in range(5):
                     alpha = 0.5
                     d = abs(p1[j] - p2[j])
-                    low = min(p1[j], p2[j]) - alpha * d
-                    high = max(p1[j], p2[j]) + alpha * d
-                    child1.append(max(0.01, random.uniform(low, high)))
-                    child2.append(max(0.01, random.uniform(low, high)))
-                offspring.extend([child1, child2])
+                    low = max(WEIGHT_LOW, min(p1[j], p2[j]) - alpha * d)
+                    high = min(WEIGHT_HIGH, max(p1[j], p2[j]) + alpha * d)
+                    child1.append(random.uniform(low, high))
+                    child2.append(random.uniform(low, high))
             else:
-                offspring.extend([p1[:], p2[:]])
+                child1, child2 = p1[:], p2[:]
 
-        # Gaussian mutation (σ=0.1)
-        for ind in offspring:
-            if random.random() < 0.2:
-                idx = random.randint(0, 4)
-                ind[idx] += random.gauss(0, 0.1)
-                ind[idx] = max(0.01, ind[idx])
+            # Gaussian mutation (σ=MUTATION_SIGMA), per-gene rate=MUTATION_RATE
+            for child in (child1, child2):
+                for j in range(5):
+                    if random.random() < MUTATION_RATE:
+                        child[j] = max(WEIGHT_LOW,
+                                       min(WEIGHT_HIGH,
+                                           child[j] + random.gauss(0, MUTATION_SIGMA)))
 
+            offspring.append(child1)
+            if len(offspring) < population_size:
+                offspring.append(child2)
+
+        # Normalize entire population to the simplex
         for ind in offspring:
             normalize_weights(ind)
 

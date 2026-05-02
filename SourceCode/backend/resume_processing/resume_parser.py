@@ -116,13 +116,15 @@ TECH_SKILLS_DB = [
     # Frameworks
     "react", "angular", "vue", "django", "flask", "fastapi", "spring",
     "node.js", "express", "next.js", "tensorflow", "pytorch", "keras",
-    "scikit-learn", "pandas", "numpy", "spark", "hadoop", "airflow", "TestNG", "junit", "BDD", "cucumber","selenium",
+    "scikit-learn", "pandas", "numpy", "spark", "hadoop", "airflow",
+    "testng", "junit", "bdd", "cucumber", "selenium",
     # Databases
     "sql", "mysql", "postgresql", "mongodb", "redis", "elasticsearch",
-    "dynamodb", "cassandra", "neo4j", "oracle",
+    "dynamodb", "cassandra", "neo4j", "oracle", "plsql", "pl/sql",
     # Cloud & DevOps
     "aws", "azure", "gcp", "docker", "kubernetes", "terraform", "jenkins",
     "ci/cd", "git", "linux", "ansible", "grafana", "prometheus",
+    "jboss", "gradle", "maven", "tomcat",
     # AI/ML
     "machine learning", "deep learning", "nlp", "computer vision",
     "transformers", "bert", "gpt", "llm", "reinforcement learning",
@@ -132,11 +134,37 @@ TECH_SKILLS_DB = [
     "data science", "data engineering", "etl", "data pipeline",
     "power bi", "tableau", "looker", "data visualization",
     "statistics", "a/b testing", "hypothesis testing",
-    # Other
-    "agile", "waterfall" "scrum", "jira", "rest api", "graphql", "microservices",
-    "system design", "oop", "design patterns", "html", "css",
-    "banking", "finance", "healthcare", "e-commerce", "cybersecurity", "blockchain","kanban","scrum master", "communication","problem solving",
-    
+    # General SDLC / methodology
+    "agile", "waterfall", "scrum", "jira", "rest api", "graphql", "microservices",
+    "system design", "oop", "oops", "design patterns", "html", "css",
+    "kanban", "scrum master", "communication", "problem solving",
+    "open api", "open banking",
+    # Domain — banking / finance core
+    "banking", "finance", "fintech", "compliance", "audit", "risk management",
+    "investment banking", "capital markets", "asset management",
+    # Domain — trading systems / Calypso ecosystem
+    "calypso", "calypso architecture", "calypso modules", "calypso data model",
+    "trading platform", "trading platforms", "trade lifecycle",
+    "front office", "back office", "middle office",
+    "settlements", "trade settlement", "clearing",
+    "p&l", "official p&l", "accounting setup",
+    "market data", "curve setup", "static data",
+    "position management", "position configuration",
+    "bloomberg sapi", "bloomberg", "reuters", "toms", "deal tracker",
+    "market data interface",
+    # Domain — risk / derivatives
+    "ers", "limit setup", "var", "value at risk",
+    "credit risk", "market risk", "operational risk",
+    "fixed income", "money market", "interest rate", "interest rate derivatives",
+    "fx", "fx derivatives", "foreign exchange",
+    "credit derivatives", "non linear derivatives", "non-linear derivatives",
+    "derivatives", "swaps", "options", "futures", "bonds",
+    "asset class", "swift messaging",
+    # Other industries
+    "healthcare", "e-commerce", "cybersecurity", "blockchain",
+    # Soft skills (frequently appear in JDs)
+    "leadership", "stakeholder management", "test management", "uat",
+    "automation", "manual testing",
 ]
 
 # ─── Education Level Mapping ──────────────────────────────────

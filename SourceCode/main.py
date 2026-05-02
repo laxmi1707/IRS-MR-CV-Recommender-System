@@ -77,6 +77,7 @@ async def rank_resumes(
                 resume=parsed_resume,
                 jd_required_skills=jd.required_skills,
                 jd_min_experience=jd.min_experience_years,
+                jd_max_experience=jd.max_experience_years,
                 jd_min_education=jd.required_education,
                 jd_text=jd.description,
                 jd_title=jd.title,

@@ -242,6 +242,7 @@ def check_eligibility(
     jd_text: str,
     jd_title: str = "",
     sbert_model=None,
+    jd_max_experience: float = 0.0,
 ) -> EligibilityResult:
     """Relaxed eligibility check — defaults to ELIGIBLE."""
     rules_fired = []
@@ -325,40 +326,76 @@ def check_eligibility(
                 details="Will be scored on D1.",
             ))
 
-    # ─── Rule 3: Experience floor with 10% tolerance ──────────
-    # Per the spec: candidate must have at least (jd_min_exp - tolerance) years,
-    # where tolerance = max(1, jd_min_exp * 0.10) rounded down.
+    # ─── Rule 3: Experience window with 10% tolerance ─────────
+    # If JD specifies a RANGE (e.g. "4-11 years"), candidate must fit
+    # within [min - 10%, max + 10%]. Otherwise (single threshold), the
+    # candidate just needs to clear the floor.
     # Examples:
-    #   JD requires 10y → tolerance 1y → 9y candidate OK, 8y candidate NA
-    #   JD requires 5y  → tolerance 1y → 4y candidate OK, 3y candidate NA
-    #   JD requires 15y → tolerance 1y (1.5 rounds down) → 14y OK, 13y NA
+    #   JD "10y" → tolerance 1y → 9y OK, 8y NA
+    #   JD "4-11y" → window [4-1, 11+1] = [3, 12] → 3y OK, 12y OK, 13y NA, 2y NA
     if is_eligible and jd_min_experience > 0:
         import math
-        tolerance = max(1.0, math.floor(jd_min_experience * 0.10))
-        floor = jd_min_experience - tolerance
-        if resume.experience_years < floor:
+        cand_yrs = resume.experience_years
+        # 10% tolerance computed against the bound being checked
+        lower_tolerance = max(1.0, math.floor(jd_min_experience * 0.10))
+        floor = jd_min_experience - lower_tolerance
+
+        # Range-mode if a max was provided AND it's strictly greater than min
+        is_range_mode = jd_max_experience > jd_min_experience
+        if is_range_mode:
+            upper_tolerance = max(1.0, math.floor(jd_max_experience * 0.10))
+            ceiling = jd_max_experience + upper_tolerance
+        else:
+            ceiling = float("inf")
+
+        below_floor = cand_yrs < floor
+        above_ceiling = is_range_mode and cand_yrs > ceiling
+
+        if below_floor or above_ceiling:
+            if below_floor:
+                cond = (f"exp={cand_yrs}y, required={jd_min_experience:.0f}+ "
+                        f"(floor={floor:.0f}y)")
+                if is_range_mode:
+                    fail_reason = (
+                        f"Outside experience window: candidate has {cand_yrs:.0f}y; "
+                        f"the role asks for {jd_min_experience:.0f}–{jd_max_experience:.0f}y "
+                        f"(acceptable range with 10% tolerance: {floor:.0f}–{ceiling:.0f}y)."
+                    )
+                else:
+                    fail_reason = (
+                        f"Insufficient experience: candidate has {cand_yrs:.0f}y "
+                        f"but the role requires {jd_min_experience:.0f}y "
+                        f"(minimum acceptable: {floor:.0f}y)."
+                    )
+            else:
+                # above_ceiling — only possible in range mode
+                cond = (f"exp={cand_yrs}y, range={jd_min_experience:.0f}-{jd_max_experience:.0f}y "
+                        f"(ceiling={ceiling:.0f}y)")
+                fail_reason = (
+                    f"Above experience window: candidate has {cand_yrs:.0f}y; "
+                    f"the role asks for {jd_min_experience:.0f}–{jd_max_experience:.0f}y "
+                    f"(acceptable range with 10% tolerance: {floor:.0f}–{ceiling:.0f}y)."
+                )
             rules_fired.append(RuleFiring(
                 rule_name="ExperienceRule",
-                condition=f"exp={resume.experience_years}y, required={jd_min_experience}y (tolerance={tolerance:.0f}y, floor={floor:.0f}y)",
+                condition=cond,
                 result="FAIL",
-                details=(
-                    f"Candidate has {resume.experience_years:.0f} year(s) of experience; "
-                    f"the role requires at least {jd_min_experience:.0f} years "
-                    f"(with a tolerance of {tolerance:.0f} year, candidates below "
-                    f"{floor:.0f} years are not applicable)."
-                ),
+                details=fail_reason,
             ))
             is_eligible = False
-            fail_reason = (
-                f"Insufficient experience: candidate has {resume.experience_years:.0f}y "
-                f"but the role requires {jd_min_experience:.0f}y (minimum acceptable: {floor:.0f}y)."
-            )
         else:
+            if is_range_mode:
+                detail = (
+                    f"Within {jd_min_experience:.0f}–{jd_max_experience:.0f}y window "
+                    f"(±10% tolerance: {floor:.0f}–{ceiling:.0f}y). Will be scored on D2."
+                )
+            else:
+                detail = f"Within {lower_tolerance:.0f}-year tolerance window. Will be scored on D2."
             rules_fired.append(RuleFiring(
                 rule_name="ExperienceRule",
-                condition=f"exp={resume.experience_years}y, required={jd_min_experience}y",
+                condition=f"exp={cand_yrs}y",
                 result="PASS",
-                details=f"Within {tolerance:.0f}-year tolerance window. Will be scored on D2.",
+                details=detail,
             ))
     elif is_eligible:
         rules_fired.append(RuleFiring(
