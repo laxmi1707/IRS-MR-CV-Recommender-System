@@ -354,10 +354,19 @@ Notice Period: Within 60 days preferred.</textarea>
       <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
         <div class="upload-icon">+</div>
         <div style="font-size:14px; font-weight:600; color:var(--navy)">Click to select resume files</div>
-        <div style="font-size:12px; color:var(--muted); margin-top:4px">Supports PDF and DOCX &middot; Upload multiple files</div>
+        <div style="font-size:12px; color:var(--muted); margin-top:4px">Optional. Leave empty to match against all resumes already stored in the vector DB.</div>
         <div class="file-list" id="fileList"></div>
       </div>
       <input type="file" id="fileInput" multiple accept=".pdf,.docx,.doc" style="display:none" onchange="handleFiles(this.files)" />
+      <label style="display:flex; align-items:flex-start; gap:8px; margin-top:10px; font-size:13px; color:var(--navy)">
+        <input type="checkbox" id="includeExistingCheckbox" checked disabled />
+        <span>
+          Include existing CVs from the vector DB along with uploaded CVs.
+          <span id="matchingModeHint" style="display:block; font-size:12px; color:var(--muted); margin-top:4px;">
+            Upload CVs to choose between Existing CVs + Uploaded and Only Uploaded.
+          </span>
+        </span>
+      </label>
     </div>
 
     <button class="btn-rank" id="rankBtn" onclick="rankCandidates()">
@@ -394,12 +403,19 @@ function removeFile(idx) {
 function renderFileList() {
   const el = document.getElementById("fileList");
   const area = document.getElementById("uploadArea");
+  const includeExistingCheckbox = document.getElementById("includeExistingCheckbox");
+  const matchingModeHint = document.getElementById("matchingModeHint");
   if (uploadedFiles.length === 0) {
     el.innerHTML = "";
     area.classList.remove("has-files");
+    includeExistingCheckbox.checked = true;
+    includeExistingCheckbox.disabled = true;
+    matchingModeHint.textContent = "Without uploads, ranking uses all resumes already stored in the vector DB.";
     return;
   }
   area.classList.add("has-files");
+  includeExistingCheckbox.disabled = false;
+  matchingModeHint.textContent = "Checked: Existing CVs + Uploaded. Unchecked: Only Uploaded.";
   el.innerHTML = uploadedFiles.map((f, i) =>
     `<span class="file-item">${f.name} <span class="file-remove" onclick="removeFile(${i})">&times;</span></span>`
   ).join("");
@@ -525,20 +541,18 @@ async function rankCandidates() {
   const errBox = document.getElementById("errorBox");
   errBox.style.display = "none";
 
-  if (uploadedFiles.length === 0) {
-    errBox.textContent = "Please upload at least one resume file (PDF or DOCX).";
-    errBox.style.display = "block";
-    return;
-  }
-
   btn.disabled = true;
   btn.classList.add("loading");
   btn.textContent = "Analyzing resumes with ICRS pipeline...";
 
   try {
     const formData = new FormData();
+    const includeExistingCheckbox = document.getElementById("includeExistingCheckbox");
     formData.append("job_title", document.getElementById("jobTitle").value);
     formData.append("job_description", document.getElementById("jobDesc").value);
+    if (uploadedFiles.length > 0) {
+      formData.append("matching_mode", includeExistingCheckbox.checked ? "existing_plus_uploaded" : "only_uploaded");
+    }
     uploadedFiles.forEach(f => formData.append("resumes", f));
 
     const res = await fetch(API_URL + "/api/rank", {

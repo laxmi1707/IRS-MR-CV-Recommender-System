@@ -2,8 +2,9 @@
 main.py — FastAPI Backend for ICRS 6-Step Pipeline
 """
 
+from dataclasses import asdict
 import re
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Optional
@@ -12,6 +13,7 @@ import json
 from backend.decision_automation.eligibility_engine import check_eligibility
 from backend.jd_processing.jd_parsing import parse_job_description
 from backend.resume_processing.resume_parser import parse_resume
+from backend.rag_pipeline import get_ingestion_candidate_ids, get_vector_db_stats, resume_store, retrieve_resumes_for_scoring, store_uploaded_resumes
 from backend.scoring_ranking_engine.scoring_engine import CandidateRanking, get_sbert_model, rank_candidates
 from backend.business_optimization.ga_optimizer import CATEGORY_WEIGHTS, detect_job_category
 
@@ -32,22 +34,63 @@ app.add_middleware(
 
 @app.get("/health")
 async def health_check():
+    collection_stats = get_vector_db_stats()
     return {
         "status": "healthy",
         "service": "S-Rank ICRS API",
         "version": "2.0.0",
         "pipeline": "6-step (Eligibility → Flags → Score → GA → Rank → XAI)",
+        "vector_db": collection_stats,
     }
+
+
+@app.post("/api/store-resumes")
+async def store_resumes(resumes: list[UploadFile] = File(...)):
+    try:
+        ingestion = await store_uploaded_resumes(resumes)
+        stats = get_vector_db_stats()
+        return {
+            "success": True,
+            "stored": ingestion["stored"],
+            "duplicates": ingestion["duplicates"],
+            "vector_db": stats,
+            "message": (
+                f"Stored {len(ingestion['stored'])} resumes and skipped "
+                f"{len(ingestion['duplicates'])} duplicates."
+            ),
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500,
+            content={"success": False, "message": str(e)})
+
+
+@app.post("/api/clear-db")
+async def clear_database():
+    try:
+        stats = resume_store.clear_collection_with_stats()
+        return {
+            "success": True,
+            "message": "Resume vector database cleared.",
+            "vector_db": stats,
+        }
+    except Exception as e:
+        return JSONResponse(status_code=500,
+            content={"success": False, "message": str(e)})
 
 
 @app.post("/api/rank")
 async def rank_resumes(
+    request: Request,
     job_title: str = Form(""),
     job_description: str = Form(...),
-    resumes: list[UploadFile] = File(...),
     weights: Optional[str] = Form(None),
+    matching_mode: Optional[str] = Form(None),
+    top_k: Optional[int] = Form(None),
 ):
     try:
+        form = await request.form()
+        resumes = [item for item in form.getlist("resumes") if hasattr(item, "filename")]
+
         custom_weights = None
         if weights:
             try:
@@ -57,15 +100,34 @@ async def rank_resumes(
 
         jd = parse_job_description(job_description, title=job_title)
 
-        parsed_resumes = []
-        for resume_file in resumes:
-            file_bytes = await resume_file.read()
-            parsed = parse_resume(file_bytes, resume_file.filename or "resume")
-            parsed_resumes.append(parsed)
+        ingestion = await store_uploaded_resumes(resumes)
+        valid_matching_modes = {None, "existing_plus_uploaded", "only_uploaded"}
+        if matching_mode not in valid_matching_modes:
+            return JSONResponse(status_code=400,
+                content={"success": False, "message": "Invalid matching_mode. Use existing_plus_uploaded or only_uploaded."})
+
+        if not resumes:
+            if matching_mode == "only_uploaded":
+                return JSONResponse(status_code=400,
+                    content={"success": False, "message": "Upload resumes to use the only uploaded matching mode."})
+            scoped_candidate_ids = None
+            matching_scope = "all_resumes_in_db"
+        elif matching_mode == "only_uploaded":
+            scoped_candidate_ids = get_ingestion_candidate_ids(ingestion)
+            matching_scope = "uploaded_resumes_only"
+        else:
+            scoped_candidate_ids = None
+            matching_scope = "existing_plus_uploaded"
+
+        parsed_resumes, retrieved_candidates = retrieve_resumes_for_scoring(
+            jd,
+            top_k=top_k,
+            candidate_ids=scoped_candidate_ids,
+        )
 
         if not parsed_resumes:
             return JSONResponse(status_code=400,
-                content={"success": False, "message": "No valid resumes."})
+                content={"success": False, "message": "No resumes available in the vector database for scoring."})
 
         sbert_model = get_sbert_model()
 
@@ -155,9 +217,18 @@ async def rank_resumes(
 
         return {
             "success": True,
-            "message": f"Processed {len(parsed_resumes)} resumes. "
-                       f"{len(eligible)} eligible, {len(not_applicable)} filtered out.",
+            "message": (
+                f"Scored {len(parsed_resumes)} resumes retrieved from the vector database ({matching_scope}). "
+                f"{len(eligible)} eligible, {len(not_applicable)} filtered out. "
+                f"Stored {len(ingestion['stored'])} new resumes and skipped {len(ingestion['duplicates'])} duplicates."
+            ),
             "pipeline": {
+                "step0_vector_db": {
+                    "matching_scope": matching_scope,
+                    "stored": len(ingestion["stored"]),
+                    "duplicates_skipped": len(ingestion["duplicates"]),
+                    "retrieved_for_scoring": len(retrieved_candidates),
+                },
                 "step1_eligibility": f"{len(not_applicable)} candidates filtered as NA",
                 "step2_flags": "Expert flags assigned to eligible candidates",
                 "step3_scoring": "5-dimensional scoring applied",
@@ -167,6 +238,12 @@ async def rank_resumes(
                 },
                 "step5_ranking": f"Best-First Search ranked {len(eligible)} candidates",
                 "step6_xai": "Reasoning traces generated for all candidates",
+            },
+            "vector_db": {
+                "collection": get_vector_db_stats(),
+                "matching_scope": matching_scope,
+                "retrieved_candidates": retrieved_candidates,
+                "duplicates": ingestion["duplicates"],
             },
             "job_description": {
                 "title": jd.title,
@@ -194,14 +271,7 @@ async def parse_single_resume(resume: UploadFile = File(...)):
         parsed = parse_resume(file_bytes, resume.filename or "resume")
         return {
             "success": True,
-            "data": {
-                "name": parsed.name, "email": parsed.email,
-                "phone": parsed.phone, "skills": parsed.skills,
-                "experience_years": parsed.experience_years,
-                "education_level": parsed.education_level,
-                "job_titles": parsed.job_titles,
-                "notice_period_days": parsed.notice_period_days,
-            },
+            "data": asdict(parsed),
         }
     except Exception as e:
         return JSONResponse(status_code=500,
