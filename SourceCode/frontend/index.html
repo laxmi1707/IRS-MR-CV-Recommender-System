@@ -30,12 +30,25 @@
     gap: 14px;
   }
   .logo {
-    width: 40px; height: 40px; border-radius: 8px; background: var(--orange);
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 900; color: white; font-size: 15px; font-family: 'DM Serif Display', serif;
+    width: clamp(160px, 22vw, 230px);
+    flex: 0 0 auto;
+    display: block;
   }
-  .header-title { color: white; font-weight: 700; font-size: 18px; font-family: 'DM Serif Display', serif; }
-  .header-sub { color: #8ea8cc; font-size: 11px; }
+  .logo svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  @media (max-width: 640px) {
+    .header {
+      padding: 12px 16px;
+      gap: 10px;
+    }
+    .logo {
+      width: min(58vw, 210px);
+    }
+  }
 
   /* Container */
   .container { max-width: 920px; margin: 0 auto; padding: 24px; }
@@ -88,65 +101,6 @@
   }
   .summary-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
   .summary-value { font-size: 24px; font-weight: 800; color: var(--navy); font-family: 'DM Serif Display', serif; margin-top: 4px; }
-
-  /* GA Weights panel — surfaces the GA-tuned weights used for this ranking */
-  .ga-weights-panel {
-    background: linear-gradient(135deg, #fffaf2, #fff);
-    border: 1px solid #f5d6b3;
-    border-radius: 10px;
-    padding: 14px 18px;
-    margin-bottom: 20px;
-  }
-  .ga-weights-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .ga-weights-title {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--navy);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .ga-category-tag {
-    font-size: 11px;
-    color: var(--text);
-    background: rgba(232, 118, 33, 0.12);
-    padding: 4px 10px;
-    border-radius: 12px;
-  }
-  .ga-category-tag strong { color: var(--orange); font-weight: 700; }
-  .ga-weights-row {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .ga-weight-item {
-    flex: 1;
-    min-width: 100px;
-    background: white;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px 10px;
-    text-align: center;
-  }
-  .ga-weight-label {
-    font-size: 10px;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    margin-bottom: 2px;
-  }
-  .ga-weight-value {
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--orange);
-    font-family: 'DM Sans', sans-serif;
-  }
 
   /* Candidate card */
   .candidate-card {
@@ -318,10 +272,54 @@
 <body>
 
 <div class="header">
-  <div class="logo">ICRS</div>
-  <div>
-    <div class="header-title">ICRS</div>
-    <div class="header-sub">Intelligent Candidate Ranking System &middot; NUS-ISS MTech AI</div>
+  <div class="logo" aria-label="ICRS logo">
+    <svg viewBox="0 0 520 150" role="img" aria-hidden="true">
+      <defs>
+        <linearGradient id="logoNavy" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#2b5f99" />
+          <stop offset="100%" stop-color="#123c73" />
+        </linearGradient>
+        <linearGradient id="logoGreen" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#2c8a62" />
+          <stop offset="100%" stop-color="#3dad5f" />
+        </linearGradient>
+        <linearGradient id="logoGold" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#f1d780" />
+          <stop offset="100%" stop-color="#c99a2e" />
+        </linearGradient>
+        <filter id="logoShadow" x="-10%" y="-10%" width="120%" height="120%">
+          <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0d2342" flood-opacity="0.18" />
+        </filter>
+      </defs>
+      <rect x="2" y="4" width="516" height="142" rx="10" fill="#ffffff" filter="url(#logoShadow)" />
+
+      <g transform="translate(20,20)">
+        <circle cx="54" cy="54" r="32" fill="#ffffff" stroke="url(#logoNavy)" stroke-width="8" />
+        <path d="M55 22 L92 10 L82 48" fill="url(#logoGreen)" />
+        <path d="M34 73 L54 54 L71 65 L83 46" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M34 73 L54 54 L71 65 L83 46" fill="none" stroke="url(#logoGreen)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="34" cy="73" r="4.8" fill="#153f72" />
+        <circle cx="54" cy="54" r="4.8" fill="#2a7c69" />
+        <circle cx="71" cy="65" r="4.8" fill="#d7ab3e" />
+        <circle cx="83" cy="46" r="4.8" fill="#329d61" />
+        <path d="M43 69 V47 M54 69 V39 M65 69 V55" stroke="url(#logoNavy)" stroke-width="6" stroke-linecap="round" />
+        <circle cx="90" cy="63" r="13" fill="#ffffff" stroke="url(#logoGold)" stroke-width="5" />
+        <path d="M84 64 L89 69 L97 58" fill="none" stroke="url(#logoGreen)" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M28 82 L15 100" stroke="url(#logoNavy)" stroke-width="9" stroke-linecap="round" />
+        <circle cx="24" cy="83" r="6.8" fill="url(#logoNavy)" />
+        <path d="M18 50 L32 31" stroke="#2b7d69" stroke-width="5" stroke-linecap="round" opacity="0.85" />
+        <circle cx="16" cy="50" r="5.2" fill="#2b7d69" />
+        <circle cx="34" cy="29" r="4.2" fill="#d4a437" />
+        <path d="M31 16 L45 22" stroke="#1f5b8a" stroke-width="4" stroke-linecap="round" opacity="0.7" />
+        <circle cx="30" cy="15" r="3.6" fill="#1f5b8a" />
+      </g>
+
+      <text x="132" y="62" font-family="DM Sans, Arial, sans-serif" font-size="52" font-weight="700" letter-spacing="1.5" fill="#15467e">ICRS</text>
+      <text x="134" y="89" font-family="DM Sans, Arial, sans-serif" font-size="20" font-weight="700" fill="#7f858f">INTELLIGENT CANDIDATE</text>
+      <text x="134" y="110" font-family="DM Sans, Arial, sans-serif" font-size="20" font-weight="700" fill="#7f858f">RANKING SYSTEM</text>
+      <text x="134" y="131" font-family="DM Sans, Arial, sans-serif" font-size="18" font-weight="700" fill="#15467e">SMART. TRANSPARENT. OPTIMIZED.</text>
+      <text x="332" y="143" font-family="DM Sans, Arial, sans-serif" font-size="10" font-weight="500" fill="#355a88">GROUP 04 | NUS-ISS PRACTICE MODULE</text>
+    </svg>
   </div>
   <button class="btn-back" id="backBtn" style="display:none" onclick="showInput()">&#8592; New Search</button>
 </div>
@@ -586,13 +584,6 @@ function renderResults(data) {
 
   let html = "";
 
-  // ─── Pull GA category and weights from first candidate (same for all) ───
-  // Used both in the summary bar and as a transparency panel below.
-  const firstWithGa = data.candidates.find(c => c.ga_weights);
-  const gaCategory = firstWithGa?.ga_category || "default";
-  const gaWeights = firstWithGa?.ga_weights || {};
-  const fmtPct = (v) => v != null ? `${Math.round(v * 100)}%` : "—";
-
   // Summary bar
   const topScore = data.candidates[0]?.overall_score || 0;
   const eligibleCount = data.candidates.filter(c => c.is_eligible !== false).length;
@@ -612,25 +603,6 @@ function renderResults(data) {
       <div class="summary-value score-${getScoreClass(topScore)}">${topScore}</div>
     </div>
   </div>`;
-
-  // ─── GA Weights panel ──────────────────────────────────────
-  // Shows the category-tuned weights used for this ranking — full transparency
-  // about how each candidate's overall score was assembled from the 5 dimensions.
-  if (gaWeights.technical_skills != null) {
-    html += `<div class="ga-weights-panel">
-      <div class="ga-weights-header">
-        <span class="ga-weights-title">GA-Optimized Weights</span>
-        <span class="ga-category-tag">Category: <strong>${gaCategory}</strong></span>
-      </div>
-      <div class="ga-weights-row">
-        <div class="ga-weight-item"><div class="ga-weight-label">Technical Skills</div><div class="ga-weight-value">${fmtPct(gaWeights.technical_skills)}</div></div>
-        <div class="ga-weight-item"><div class="ga-weight-label">Experience</div><div class="ga-weight-value">${fmtPct(gaWeights.experience)}</div></div>
-        <div class="ga-weight-item"><div class="ga-weight-label">Education</div><div class="ga-weight-value">${fmtPct(gaWeights.education)}</div></div>
-        <div class="ga-weight-item"><div class="ga-weight-label">Availability</div><div class="ga-weight-value">${fmtPct(gaWeights.availability)}</div></div>
-        <div class="ga-weight-item"><div class="ga-weight-label">Miscellaneous</div><div class="ga-weight-value">${fmtPct(gaWeights.miscellaneous)}</div></div>
-      </div>
-    </div>`;
-  }
 
   // Skills tags
   if (data.job_description.required_skills?.length) {
