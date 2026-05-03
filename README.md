@@ -60,12 +60,177 @@ Recruiters face several challenges:
 ---
 
 
-**System Architecture - High Level**
+## **System Architecture - High Level**
+---
 <img width="920" height="514" alt="image" src="https://github.com/user-attachments/assets/e90b1ac0-aa23-4324-8a93-e88ac8d08853" />
+
+# ICRS System Architecture (High-Level)
+
+The **Intelligent Candidate Ranking System (ICRS)** is designed as a modular, scalable, and explainable recruitment intelligence platform that combines **AI-powered semantic matching, automated scoring, and rule-based decision automation** to optimize talent acquisition.
+
+---
+
+## 1. Frontend Layer
+The **Recruiter Interface** serves as the primary user interaction point, accessible through web or mobile platforms via `index.html`.
+
+### Core Functions:
+- Upload Job Descriptions
+- Submit Candidate Resumes
+- Initiate Candidate Matching
+- Review Candidate Rankings
+- View Eligibility Status and Insights
+
+This layer provides recruiters with a streamlined and user-friendly interface for managing recruitment workflows.
+
+---
+
+## 2. API / Service Layer
+The **Application Service Layer**, powered by `main.py`, functions as the central orchestration and API gateway.
+
+### Responsibilities:
+- Secure REST API communication
+- Manage recruiter requests
+- Coordinate backend processing
+- Route workflows between system components
+- Aggregate and return final ranking results
+
+### Example API Endpoints:
+- `/api/parse_resume`
+- `/api/match_candidate`
+- `/api/context`
+
+---
+
+## 3. Core Components Layer
+
+### A. Resume Processing (`resume_parser.py`)
+Responsible for extracting and structuring candidate information from multiple resume formats.
+
+### Key Functions:
+- Resume ingestion
+- OCR/Text extraction
+- Metadata parsing
+- Candidate profile normalization
+
+### Output:
+- Structured candidate data
+- Resume metadata
+- Candidate skill profiles
+
+---
+
+### B. Candidate Matching Engine
+Composed of:
+
+#### `rag_pipeline.py`
+- Semantic retrieval
+- Candidate-job contextual matching
+- AI-powered relevance search
+
+#### `scoring_engine.py`
+- Candidate scoring
+- Ranking generation
+- Job fit analysis
+- Skill and experience evaluation
+
+### Core Benefits:
+- Intelligent candidate-job matching
+- Explainable ranking
+- Semantic precision
+
+---
+
+### C. Decision Automation (`eligibility_engine.py`)
+Applies deterministic business rules and eligibility validation.
+
+### Functions:
+- Qualification checks
+- Compliance validation
+- Hiring policy enforcement
+- Candidate eligibility determination
+
+### Benefits:
+- Fair hiring practices
+- Rule-based governance
+- Transparent decision-making
+
+---
+
+## 4. Data / Persistence Layer
+
+### Resume Database
+Stores:
+- Parsed resumes
+- Candidate profiles
+- Structured candidate metadata
+
+---
+
+### Vector Store (`chroma_resume_store.py`)
+Utilizes **ChromaDB** for:
+- Semantic embeddings
+- Candidate vectors
+- Job vectors
+- Context retrieval
+- High-performance semantic search
+
+---
+
+## 5. Candidate Ranking Result
+The final system output includes:
+
+- Ranked candidate shortlist
+- Candidate scores
+- Eligibility status
+- Explainable insights
+- Recruiter-ready recommendations
+
+---
+
+## Architectural Strengths
+
+### Scalability
+- Modular layered design
+- Flexible deployment
+- Enterprise-ready architecture
+
+### Explainability
+- Transparent ranking logic
+- Rule-based validation
+- Recruiter-friendly insights
+
+### AI Integration
+- Semantic retrieval
+- Context-aware matching
+- Automated scoring
+- Retrieval-Augmented Generation (RAG)
+
+### Compliance & Fairness
+- Eligibility governance
+- Policy enforcement
+- Reduced recruitment bias
+
+---
+
+# Summary
+ICRS transforms traditional hiring by integrating:
+
+- Resume Intelligence
+- Semantic Candidate Matching
+- Automated Scoring
+- Decision Automation
+- Explainable AI
+
+This architecture enables organizations to achieve **faster, fairer, and data-driven recruitment decisions** while maintaining scalability, transparency, and operational excellence.
+
+---
 
 ## **System Architecture - Detailed Level**
 <img width="931" height="508" alt="image" src="https://github.com/user-attachments/assets/c532a5a6-208b-4b43-9cd6-29eb9e1aea9e" />
-# ICRS System Architecture – Detailed Technical View
+
+---
+
+## *ICRS System Architecture – Detailed Technical View*
 
 The **Intelligent Candidate Ranking System (ICRS)** is designed as a modular, scalable, and enterprise-grade recruitment platform that integrates **Natural Language Processing (NLP), Retrieval-Augmented Generation (RAG), Genetic Algorithm optimization, semantic ranking, and rule-based eligibility validation** to deliver intelligent, explainable, and data-driven hiring decisions.
 
