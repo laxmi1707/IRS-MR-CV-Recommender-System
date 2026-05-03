@@ -393,7 +393,9 @@ Stores:
 
 ---
 
-# ICRS System Architecture – Data Flow
+# **ICRS System Architecture – Data Flow**
+
+<img width="1900" height="1039" alt="image" src="https://github.com/user-attachments/assets/449e7644-fc72-4fea-9310-81f498bfac15" />
 
 The **ICRS Data Flow Architecture** defines the complete operational workflow that transforms recruiter inputs into optimized candidate ranking outputs through structured processing, semantic intelligence, and automated decision-making.
 
@@ -479,9 +481,6 @@ Final results are returned to recruiters for:
 - Hiring Decisions
 
 ---
-
-## **System Architecture - Data Flow**
-<img width="1900" height="1039" alt="image" src="https://github.com/user-attachments/assets/449e7644-fc72-4fea-9310-81f498bfac15" />
 
 # Data Flow Benefits
 
