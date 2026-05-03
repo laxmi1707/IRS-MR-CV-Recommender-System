@@ -214,8 +214,10 @@ IRS-MR-CV-Recommender-System/
 <img width="920" height="514" alt="image" src="https://github.com/user-attachments/assets/e90b1ac0-aa23-4324-8a93-e88ac8d08853" />
 
 ## **System Architecture - Detailed Level**
+<img width="931" height="508" alt="image" src="https://github.com/user-attachments/assets/c532a5a6-208b-4b43-9cd6-29eb9e1aea9e" />
 
 ## **System Architecture - Data Flow**
+<img width="1900" height="1039" alt="image" src="https://github.com/user-attachments/assets/449e7644-fc72-4fea-9310-81f498bfac15" />
 
 ## **Key Components**
 
