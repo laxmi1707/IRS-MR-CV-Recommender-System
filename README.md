@@ -56,6 +56,7 @@ Recruiters face several challenges:
 **Goal:** Build a system that:
 
 - **Accurately matches CVs to job descriptions**
+- **Validates the eligibility of candidate for Job**
 - **Ranks candidates effectively**
 - **Provides explainable recommendations**
 
