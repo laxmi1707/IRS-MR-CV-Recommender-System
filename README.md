@@ -16,6 +16,7 @@ https://github.com/laxmi1707/IRS-MR-CV-Recommender-System
 The system combines:
 
 - **NLP-based feature extraction** such as parsing, entity detection, and semantic similarity
+- **Eligibility check** only applicable candidates for JD should be scored
 - **Rule-based and ML-based scoring** for structured candidate evaluation
 - **Optimization using Genetic Algorithm (GA)** for tuned ranking weights
 - **RAG-based explanation support** for transparent candidate justification
@@ -31,7 +32,7 @@ The system:
 - **Extracts structured information** from resumes
 - **Matches candidates with job descriptions** using semantic and rule-based techniques
 - **Ranks candidates using optimized scoring weights**
-- **Provides explainable recommendations** through reasoning traces and an explainability layer
+- **Provides explainable candidature** through reasoning traces and an explainability layer
 
 This approach improves:
 
