@@ -314,10 +314,10 @@ The **Genetic Algorithm Optimizer** dynamically refines candidate scoring weight
 The AI-powered intelligence core of ICRS.
 
 ### Technologies:
-- LangChain / LangGraph RAG
 - ChromaDB Vector Retrieval
 - Semantic Search
 - Cosine Similarity
+- Apriori Rules
 - Candidate-Job Contextual Matching
 
 ### Responsibilities:
