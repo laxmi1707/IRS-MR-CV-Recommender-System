@@ -1,5 +1,8 @@
 📄 ICRS – Intelligent CV Screening & Recommendation System
 
+<img width="566" height="299" alt="image" src="https://github.com/user-attachments/assets/800aa9f4-0538-40ec-9045-aaa02391eabd" />
+
+
 🔗 GitHub Repository:
 https://github.com/laxmi1707/IRS-MR-CV-Recommender-System
 
