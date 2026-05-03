@@ -26,6 +26,7 @@ The system combines:
 ## **Project Abstract**
 
 Recruitment today is often time-consuming, repetitive, and inconsistent due to manual CV screening and subjective evaluation. **ICRS** addresses this problem by introducing a hybrid AI-driven system that automates candidate evaluation while preserving transparency and explainability.
+No candidated would be rejected, each applicable candidate is scored then ranked.
 
 The system:
 
