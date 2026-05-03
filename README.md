@@ -59,12 +59,332 @@ Recruiters face several challenges:
 
 ---
 
-## **System Architecture (High-Level)**
 
-```text
-Resume -> Parsing -> NER / Feature Extraction -> Scoring -> GA Optimization -> Ranking -> RAG / Explanation Layer
-```
+**System Architecture - High Level**
+<img width="920" height="514" alt="image" src="https://github.com/user-attachments/assets/e90b1ac0-aa23-4324-8a93-e88ac8d08853" />
 
+## **System Architecture - Detailed Level**
+<img width="931" height="508" alt="image" src="https://github.com/user-attachments/assets/c532a5a6-208b-4b43-9cd6-29eb9e1aea9e" />
+# ICRS System Architecture – Detailed Technical View
+
+The **Intelligent Candidate Ranking System (ICRS)** is designed as a modular, scalable, and enterprise-grade recruitment platform that integrates **Natural Language Processing (NLP), Retrieval-Augmented Generation (RAG), Genetic Algorithm optimization, semantic ranking, and rule-based eligibility validation** to deliver intelligent, explainable, and data-driven hiring decisions.
+
+---
+
+## 1. Frontend Layer
+The **Recruiter Interface** serves as the primary user interaction layer, accessible via web or mobile platforms through `index.html`.
+
+### Core Functions:
+- Upload Job Descriptions
+- Submit Candidate Resumes
+- View Candidate Rankings
+- Review Eligibility Status
+- Recruiter Dashboard Interaction
+
+This layer provides recruiters with a seamless and secure interface while abstracting backend complexity.
+
+---
+
+## 2. API / Service Layer (`main.py`)
+The **Application Service Layer** functions as the central orchestration hub of ICRS.
+
+### Components:
+- FastAPI Web Server
+- API Route Handlers
+- Authentication Middleware
+- Background Task Queue
+- Async Processing Services
+
+### Responsibilities:
+- Secure REST API communication
+- Request validation
+- Workflow coordination
+- Backend service routing
+- Integration with optimization engines
+- Response aggregation
+
+### Example Endpoints:
+- `/api/parse_resume`
+- `/api/match_candidate`
+- `/api/score_resumes`
+
+---
+
+## 3. Core Components Layer
+
+### A. JD Processing Engine (`jd_parsing.py`, `expert_flags.py`)
+Processes uploaded Job Descriptions using NLP and domain-specific intelligence.
+
+### Key Functions:
+- JD Text Extraction
+- Skill Identification
+- Skill Tagging
+- Domain Expertise Detection
+- Expert Flag Generation
+
+### Output:
+- Structured Job Metadata
+- Skill Matrix
+- Hiring Criteria
+
+---
+
+### B. Resume Processing Engine (`resume_parser.py`)
+Handles resume ingestion and candidate profile structuring.
+
+### Capabilities:
+- OCR/Text Extraction
+- Resume Parsing
+- Data Cleaning
+- Metadata Extraction
+- Candidate Profile Normalization
+
+### Output:
+- Structured Candidate Profiles
+- Experience Metadata
+- Skill Datasets
+
+---
+
+### C. GA Optimizer Engine
+The **Genetic Algorithm Optimizer** dynamically refines candidate scoring weights.
+
+### Functions:
+- Feature Weight Optimization
+- Scoring Loop Tuning
+- Performance Metric Analysis
+- Ranking Precision Enhancement
+
+### Benefits:
+- Adaptive scoring
+- Improved ranking relevance
+- Enhanced optimization efficiency
+
+---
+
+### D. Matcher & Ranking Engine (`rag_pipeline.py`, `scoring_engine.py`)
+The AI-powered intelligence core of ICRS.
+
+### Technologies:
+- LangChain / LangGraph RAG
+- ChromaDB Vector Retrieval
+- Semantic Search
+- Cosine Similarity
+- Candidate-Job Contextual Matching
+
+### Responsibilities:
+- Retrieve relevant context
+- Perform semantic candidate-job matching
+- Score candidates
+- Generate ranked candidate lists
+
+---
+
+### E. Eligibility Engine (`eligibility_engine.py`)
+Ensures deterministic, fair, and compliant hiring validation.
+
+### Functions:
+- Rule Evaluation
+- Qualification Threshold Checks
+- Compliance Validation
+- Candidate Flag Generation
+- Explainable Governance
+
+---
+
+## 4. Data / Persistence Layer
+
+### CV Database (e.g., PostgreSQL)
+Stores:
+- Candidate Profiles
+- Parsed Resume Data
+- Structured Metadata
+- Job Descriptions
+
+---
+
+### Vector Store (e.g., ChromaDB)
+Stores:
+- Semantic Embeddings
+- Candidate Vectors
+- Job Vectors
+- Retrieval Context Data
+
+---
+
+### Logs & Config Database
+Stores:
+- System Logs
+- GA Optimization Weights
+- Performance Metrics
+- Audit Trails
+- Configuration States
+
+---
+
+## 5. Architectural Strengths
+
+### Scalability
+- Modular architecture
+- Independent component deployment
+- Enterprise-ready design
+
+### Explainability
+- Transparent scoring
+- Rule-based validation
+- Recruiter-friendly insights
+
+### Optimization
+- Genetic Algorithm refinement
+- Dynamic ranking precision
+- Continuous performance improvement
+
+### Compliance & Fairness
+- Deterministic business rules
+- Eligibility validation
+- Reduced hiring bias
+
+---
+
+# Summary
+The detailed ICRS architecture integrates:
+
+- Resume Intelligence
+- Job Description Understanding
+- AI-Powered Matching
+- Genetic Optimization
+- Automated Ranking
+- Rule-Based Compliance
+- Explainable Decision Support
+
+This design enables **faster, fairer, scalable, and transparent recruitment automation** for enterprise-grade talent acquisition.
+
+---
+
+# ICRS System Architecture – Data Flow
+
+The **ICRS Data Flow Architecture** defines the complete operational workflow that transforms recruiter inputs into optimized candidate ranking outputs through structured processing, semantic intelligence, and automated decision-making.
+
+---
+
+## Step 1: Recruiter Input
+Recruiters interact through the **Frontend Layer** to:
+- Upload Job Descriptions
+- Submit Candidate Resumes
+- Initiate Matching Requests
+- Review Candidate Rankings
+
+---
+
+## Step 2: Application Service Processing
+The **Application Service/API Layer** receives all requests.
+
+### Responsibilities:
+- Request validation
+- API orchestration
+- Secure communication
+- Service coordination
+
+---
+
+## Step 3: Resume Parsing
+The **Resume Processing Engine**:
+- Extracts candidate text
+- Structures candidate metadata
+- Cleans and normalizes data
+- Stores resumes in the Resume Database
+
+---
+
+## Step 4: Data Storage
+Structured data is stored in:
+- Resume Database
+- Candidate Profile Storage
+
+Semantic embeddings are stored in:
+- ChromaDB Vector Store
+
+---
+
+## Step 5: Semantic Retrieval
+The **Candidate Matching Engine**:
+- Retrieves contextual candidate information
+- Performs semantic candidate-job alignment
+- Uses vector similarity for precision matching
+
+---
+
+## Step 6: Candidate Scoring
+The **Scoring Engine**:
+- Evaluates skill fit
+- Measures experience relevance
+- Calculates candidate ranking scores
+
+---
+
+## Step 7: Decision Automation
+The **Eligibility Engine**:
+- Applies business rules
+- Validates compliance
+- Confirms candidate eligibility
+- Generates final governance checks
+
+---
+
+## Step 8: Candidate Ranking Result
+The system produces:
+- Ranked Candidate Shortlist
+- Scores
+- Eligibility Status
+- Explainable Insights
+
+---
+
+## Step 9: Recruiter Output
+Final results are returned to recruiters for:
+- Candidate Review
+- Shortlisting
+- Hiring Decisions
+
+---
+
+## **System Architecture - Data Flow**
+<img width="1900" height="1039" alt="image" src="https://github.com/user-attachments/assets/449e7644-fc72-4fea-9310-81f498bfac15" />
+
+# Data Flow Benefits
+
+### Efficiency
+- End-to-end automation
+- Reduced manual effort
+- Faster processing
+
+### Transparency
+- Explainable AI decisions
+- Rule-based governance
+
+### Scalability
+- Handles large resume volumes
+- Vector-powered retrieval architecture
+
+### Intelligence
+- Semantic matching
+- AI-driven ranking
+- Contextual candidate evaluation
+
+---
+
+# Final Summary
+ICRS transforms recruitment through the following streamlined flow:
+
+**Input → Parsing → Storage → Retrieval → Scoring → Validation → Ranking → Decision Support**
+
+This architecture delivers:
+
+- Faster hiring
+- Fairer candidate evaluation
+- Explainable recruitment intelligence
+- Scalable enterprise deployment
+- 
 ---
 
 ## **Evaluation Report**
@@ -209,15 +529,6 @@ IRS-MR-CV-Recommender-System/
 ```
 
 ---
-
-**System Architecture - High Level**
-<img width="920" height="514" alt="image" src="https://github.com/user-attachments/assets/e90b1ac0-aa23-4324-8a93-e88ac8d08853" />
-
-## **System Architecture - Detailed Level**
-<img width="931" height="508" alt="image" src="https://github.com/user-attachments/assets/c532a5a6-208b-4b43-9cd6-29eb9e1aea9e" />
-
-## **System Architecture - Data Flow**
-<img width="1900" height="1039" alt="image" src="https://github.com/user-attachments/assets/449e7644-fc72-4fea-9310-81f498bfac15" />
 
 ## **Key Components**
 
