@@ -60,11 +60,11 @@ Recruiters face several challenges:
 ---
 
 
-## **System Architecture - High Level**
+# **System Architecture - High Level**
 ---
 <img width="920" height="514" alt="image" src="https://github.com/user-attachments/assets/e90b1ac0-aa23-4324-8a93-e88ac8d08853" />
 
-# ICRS System Architecture (High-Level)
+# **ICRS System Architecture (High-Level)**
 
 The **Intelligent Candidate Ranking System (ICRS)** is designed as a modular, scalable, and explainable recruitment intelligence platform that combines **AI-powered semantic matching, automated scoring, and rule-based decision automation** to optimize talent acquisition.
 
@@ -103,7 +103,7 @@ The **Application Service Layer**, powered by `main.py`, functions as the centra
 
 ## 3. Core Components Layer
 
-### A. Resume Processing (`resume_parser.py`)
+### A. Resume Processing
 Responsible for extracting and structuring candidate information from multiple resume formats.
 
 ### Key Functions:
@@ -122,12 +122,12 @@ Responsible for extracting and structuring candidate information from multiple r
 ### B. Candidate Matching Engine
 Composed of:
 
-#### `rag_pipeline.py`
+#### `rag_pipeline module`
 - Semantic retrieval
 - Candidate-job contextual matching
 - AI-powered relevance search
 
-#### `scoring_engine.py`
+#### `scoring_engine module`
 - Candidate scoring
 - Ranking generation
 - Job fit analysis
@@ -140,7 +140,7 @@ Composed of:
 
 ---
 
-### C. Decision Automation (`eligibility_engine.py`)
+### C. Decision Automation (`eligibility_engine module`)
 Applies deterministic business rules and eligibility validation.
 
 ### Functions:
@@ -166,7 +166,7 @@ Stores:
 
 ---
 
-### Vector Store (`chroma_resume_store.py`)
+### Vector Store (`chroma_resume_store module`)
 Utilizes **ChromaDB** for:
 - Semantic embeddings
 - Candidate vectors
@@ -205,32 +205,14 @@ The final system output includes:
 - Automated scoring
 - Retrieval-Augmented Generation (RAG)
 
-### Compliance & Fairness
-- Eligibility governance
-- Policy enforcement
-- Reduced recruitment bias
-
 ---
 
-# Summary
-ICRS transforms traditional hiring by integrating:
-
-- Resume Intelligence
-- Semantic Candidate Matching
-- Automated Scoring
-- Decision Automation
-- Explainable AI
-
-This architecture enables organizations to achieve **faster, fairer, and data-driven recruitment decisions** while maintaining scalability, transparency, and operational excellence.
-
----
-
-## **System Architecture - Detailed Level**
+# **System Architecture - Detailed Level**
 <img width="931" height="508" alt="image" src="https://github.com/user-attachments/assets/c532a5a6-208b-4b43-9cd6-29eb9e1aea9e" />
 
 ---
 
-## *ICRS System Architecture – Detailed Technical View*
+# **ICRS System Architecture - Detailed Technical View**
 
 The **Intelligent Candidate Ranking System (ICRS)** is designed as a modular, scalable, and enterprise-grade recruitment platform that integrates **Natural Language Processing (NLP), Retrieval-Augmented Generation (RAG), Genetic Algorithm optimization, semantic ranking, and rule-based eligibility validation** to deliver intelligent, explainable, and data-driven hiring decisions.
 
@@ -250,7 +232,7 @@ This layer provides recruiters with a seamless and secure interface while abstra
 
 ---
 
-## 2. API / Service Layer (`main.py`)
+## 2. API / Service Layer (`main module`)
 The **Application Service Layer** functions as the central orchestration hub of ICRS.
 
 ### Components:
@@ -277,7 +259,7 @@ The **Application Service Layer** functions as the central orchestration hub of 
 
 ## 3. Core Components Layer
 
-### A. JD Processing Engine (`jd_parsing.py`, `expert_flags.py`)
+### A. JD Processing Engine (`jd_parsing module`, `expert_flags module`)
 Processes uploaded Job Descriptions using NLP and domain-specific intelligence.
 
 ### Key Functions:
@@ -294,7 +276,7 @@ Processes uploaded Job Descriptions using NLP and domain-specific intelligence.
 
 ---
 
-### B. Resume Processing Engine (`resume_parser.py`)
+### B. Resume Processing Engine (`resume_parser module`)
 Handles resume ingestion and candidate profile structuring.
 
 ### Capabilities:
@@ -327,7 +309,7 @@ The **Genetic Algorithm Optimizer** dynamically refines candidate scoring weight
 
 ---
 
-### D. Matcher & Ranking Engine (`rag_pipeline.py`, `scoring_engine.py`)
+### D. Matcher & Ranking Engine (`rag_pipeline module`, `scoring_engine module`)
 The AI-powered intelligence core of ICRS.
 
 ### Technologies:
@@ -345,7 +327,7 @@ The AI-powered intelligence core of ICRS.
 
 ---
 
-### E. Eligibility Engine (`eligibility_engine.py`)
+### E. Eligibility Engine (`eligibility_engine module`)
 Ensures deterministic, fair, and compliant hiring validation.
 
 ### Functions:
@@ -359,7 +341,7 @@ Ensures deterministic, fair, and compliant hiring validation.
 
 ## 4. Data / Persistence Layer
 
-### CV Database (e.g., PostgreSQL)
+### CV Database 
 Stores:
 - Candidate Profiles
 - Parsed Resume Data
@@ -408,21 +390,6 @@ Stores:
 - Deterministic business rules
 - Eligibility validation
 - Reduced hiring bias
-
----
-
-# Summary
-The detailed ICRS architecture integrates:
-
-- Resume Intelligence
-- Job Description Understanding
-- AI-Powered Matching
-- Genetic Optimization
-- Automated Ranking
-- Rule-Based Compliance
-- Explainable Decision Support
-
-This design enables **faster, fairer, scalable, and transparent recruitment automation** for enterprise-grade talent acquisition.
 
 ---
 
@@ -537,19 +504,19 @@ Final results are returned to recruiters for:
 - Contextual candidate evaluation
 
 ---
+# Summary
+The detailed ICRS architecture integrates:
 
-# Final Summary
-ICRS transforms recruitment through the following streamlined flow:
+- Resume Intelligence
+- Job Description Understanding
+- AI-Powered Matching
+- Genetic Optimization
+- Automated Ranking
+- Rule-Based Compliance
+- Explainable Decision Support
 
-**Input → Parsing → Storage → Retrieval → Scoring → Validation → Ranking → Decision Support**
+This design enables **faster, fairer, scalable, and transparent recruitment automation** for enterprise-grade talent acquisition.
 
-This architecture delivers:
-
-- Faster hiring
-- Fairer candidate evaluation
-- Explainable recruitment intelligence
-- Scalable enterprise deployment
-- 
 ---
 
 ## **Evaluation Report**
