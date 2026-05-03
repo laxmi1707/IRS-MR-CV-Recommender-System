@@ -210,6 +210,13 @@ IRS-MR-CV-Recommender-System/
 
 ---
 
+## **System Architecture - High Level**
+<img width="920" height="514" alt="image" src="https://github.com/user-attachments/assets/e90b1ac0-aa23-4324-8a93-e88ac8d08853" />
+
+## **System Architecture - Detailed Level**
+
+## **System Architecture - Data Flow**
+
 ## **Key Components**
 
 ### **Resume Parsing**
