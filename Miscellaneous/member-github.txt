@@ -3,3 +3,4 @@ Sangeeta
 Muneeswaran
 Stalin
 lakshmi barthwal chamoli
+Url to app: http://intelligentranking.centralindia.cloudapp.azure.com/
